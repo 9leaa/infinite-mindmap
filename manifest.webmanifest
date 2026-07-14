@@ -1,10 +1,15 @@
 {
-  "name": "无限画布思维导图 V15.6",
+  "name": "无限画布思维导图 V15.7",
   "short_name": "无限画布",
-  "description": "左侧无限画布思维导图，右侧完整 PDF 连续阅读、划重点与 Apple Pencil 批注。",
+  "description": "稳定 Apple Pencil/手指识别、双悬浮工具、快速 PDF 阅读批注与 IndexedDB。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": [
+    "fullscreen",
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#f7f8fb",
   "theme_color": "#2563eb",
   "icons": [
@@ -18,10 +23,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "display_override": [
-    "fullscreen",
-    "standalone",
-    "minimal-ui"
   ]
 }

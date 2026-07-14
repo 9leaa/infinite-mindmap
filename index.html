@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V15.6 右侧 PDF 阅读批注版</title>
+  <title>无限画布思维导图 · V15.7 触控与 PDF 性能修正版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -4019,7 +4019,262 @@
       }
     }
 
+  
+    /* V15.7：折叠区分、稳定 Pencil/手指、PDF 快速渲染与明确缩放 */
+
+    /* 两个悬浮工具折叠后使用完全不同的视觉语言 */
+    .mindmap-floating-toolbar.collapsed {
+      min-width: 122px !important;
+      max-width: 122px !important;
+      overflow: visible !important;
+      border-color: rgba(37, 99, 235, 0.48) !important;
+      background:
+        linear-gradient(145deg,
+          color-mix(in srgb, #dbeafe 84%, var(--panel-bg)),
+          color-mix(in srgb, var(--panel-bg) 96%, transparent)) !important;
+    }
+
+    .mindmap-floating-toolbar.collapsed::after {
+      content: "◇  导图";
+      order: 1;
+      min-width: 54px;
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .mindmap-floating-toolbar.collapsed #tabletDockCollapseBtn {
+      order: 2;
+      color: #2563eb;
+    }
+
+    .pure-emphasis-toolbar.collapsed {
+      min-width: 122px !important;
+      max-width: 122px !important;
+      overflow: visible !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      border-color: rgba(217, 119, 6, 0.52) !important;
+      background:
+        linear-gradient(145deg,
+          color-mix(in srgb, #fef3c7 84%, var(--panel-bg)),
+          color-mix(in srgb, var(--panel-bg) 96%, transparent)) !important;
+    }
+
+    .pure-emphasis-toolbar.collapsed::after {
+      content: "✎  画笔";
+      order: 1;
+      min-width: 54px;
+      color: #b45309;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .pure-emphasis-toolbar.collapsed #pureToolbarCollapseBtn {
+      order: 2;
+      display: grid !important;
+      color: #b45309 !important;
+    }
+
+    body[data-theme="dark"] .mindmap-floating-toolbar.collapsed {
+      background: linear-gradient(145deg, rgba(30, 64, 175, 0.34), #20242b) !important;
+    }
+
+    body[data-theme="dark"] .pure-emphasis-toolbar.collapsed {
+      background: linear-gradient(145deg, rgba(146, 64, 14, 0.34), #20242b) !important;
+    }
+
+    /* PDF 最大化：右侧阅读器占满整个应用，不触发浏览器导航栏 */
+    body.pdf-reader-maximized .pdf-reader-panel {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 980 !important;
+      width: 100vw !important;
+      max-width: none !important;
+      min-width: 0 !important;
+      height: 100dvh !important;
+      display: grid !important;
+      border: 0 !important;
+    }
+
+    body.pdf-reader-maximized .pdf-reader-resize-handle {
+      display: none !important;
+    }
+
+    body.pdf-reader-maximized #pdfReaderMaximizeBtn {
+      border-color: color-mix(in srgb, var(--primary) 52%, var(--border));
+      background: color-mix(in srgb, var(--primary) 14%, transparent);
+      color: var(--primary);
+    }
+
+    /* 明确、常驻的滚动提示 */
+    .pdf-reader-body {
+      scrollbar-width: auto !important;
+      scrollbar-color:
+        color-mix(in srgb, var(--primary) 58%, #64748b)
+        color-mix(in srgb, #cbd5e1 58%, transparent);
+    }
+
+    .pdf-reader-body::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    .pdf-reader-body::-webkit-scrollbar-track {
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.22);
+    }
+
+    .pdf-reader-body::-webkit-scrollbar-thumb {
+      min-height: 54px;
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background:
+        linear-gradient(
+          color-mix(in srgb, var(--primary) 65%, #64748b),
+          color-mix(in srgb, var(--primary) 65%, #64748b)
+        ) padding-box;
+    }
+
+    .pdf-reader-page {
+      content-visibility: auto;
+      contain: layout paint style;
+      contain-intrinsic-size: 760px 1040px;
+    }
+
+    .pdf-reader-progress-rail,
+    .pdf-reader-zoom-rail {
+      position: absolute;
+      right: 15px;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      gap: 6px;
+      padding: 8px 5px;
+      border: 1px solid rgba(100, 116, 139, 0.28);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
+      box-shadow: 0 9px 28px rgba(15, 23, 42, 0.16);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      opacity: 0.92;
+    }
+
+    .pdf-reader-progress-rail {
+      top: 82px;
+      bottom: 92px;
+      width: 32px;
+    }
+
+    .pdf-reader-progress-rail span {
+      min-width: 24px;
+      color: var(--muted);
+      font-size: 9px;
+      text-align: center;
+    }
+
+    .pdf-reader-progress-rail input,
+    .pdf-reader-zoom-rail input {
+      width: 18px;
+      min-height: 110px;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      accent-color: var(--primary);
+    }
+
+    .pdf-reader-zoom-rail {
+      right: 55px;
+      top: 50%;
+      width: 38px;
+      transform: translateY(-50%);
+    }
+
+    .pdf-reader-zoom-rail button {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--control-bg, white);
+      color: var(--text);
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    .pdf-reader-zoom-rail strong {
+      font-size: 9px;
+      color: var(--muted);
+      writing-mode: horizontal-tb;
+    }
+
+    .pdf-reader-zoom-toast {
+      position: absolute;
+      left: 50%;
+      top: 78px;
+      z-index: 9;
+      transform: translate(-50%, -8px);
+      padding: 7px 13px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.78);
+      color: white;
+      font-size: 12px;
+      font-weight: 750;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+
+    .pdf-reader-zoom-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .pdf-reader-annotation-canvas {
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: contain;
+    }
+
+    @media (pointer: coarse) {
+      .pdf-reader-progress-rail {
+        right: 9px;
+      }
+
+      .pdf-reader-zoom-rail {
+        right: 45px;
+      }
+
+      .pdf-reader-toolbar button {
+        min-width: 40px;
+        min-height: 40px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .pdf-reader-progress-rail {
+        right: 7px;
+        top: 126px;
+        bottom: 74px;
+      }
+
+      .pdf-reader-zoom-rail {
+        right: 42px;
+      }
+    }
+
   </style>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="modulepreload"
+    href="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs"
+    crossorigin />
+  <link rel="preload" as="script"
+    href="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
+    crossorigin />
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -4342,6 +4597,8 @@
             <button id="pdfReaderZoomOutBtn" type="button" title="缩小">−</button>
             <span id="pdfReaderZoomLabel" class="pdf-reader-zoom-label">100%</span>
             <button id="pdfReaderZoomInBtn" type="button" title="放大">＋</button>
+            <button id="pdfReaderFitWidthBtn" type="button" title="适应阅读区宽度">适宽</button>
+            <button id="pdfReaderMaximizeBtn" type="button" title="占满整个应用窗口">⛶</button>
             <button id="pdfReaderNotesBtn" type="button" title="阅读笔记">笔记</button>
             <button id="closePdfReaderBtn" type="button" title="关闭阅读区">×</button>
           </div>
@@ -4352,6 +4609,27 @@
             在画布中的 PDF 文件卡片上点击“打开阅读”，文件会在这里连续显示。
           </div>
         </div>
+
+        <div id="pdfReaderProgressRail" class="pdf-reader-progress-rail"
+          aria-label="PDF 阅读进度">
+          <span id="pdfReaderCurrentPage">1</span>
+          <input id="pdfReaderPageSlider" type="range"
+            min="1" max="1" value="1" orient="vertical"
+            title="拖动跳转页面" />
+          <span id="pdfReaderTotalPages">1</span>
+        </div>
+
+        <div id="pdfReaderZoomRail" class="pdf-reader-zoom-rail"
+          aria-label="PDF 缩放">
+          <button id="pdfReaderRailZoomInBtn" type="button">＋</button>
+          <input id="pdfReaderZoomSlider" type="range"
+            min="55" max="220" step="5" value="100"
+            orient="vertical" title="PDF 缩放比例" />
+          <strong id="pdfReaderRailZoomLabel">100%</strong>
+          <button id="pdfReaderRailZoomOutBtn" type="button">−</button>
+        </div>
+
+        <div id="pdfReaderZoomToast" class="pdf-reader-zoom-toast">100%</div>
 
         <section id="pdfReaderNotesPanel" class="pdf-reader-notes-panel">
           <div class="pdf-reader-notes-header">
@@ -4725,6 +5003,18 @@
       const pdfReaderZoomOutBtn = document.getElementById("pdfReaderZoomOutBtn");
       const pdfReaderZoomInBtn = document.getElementById("pdfReaderZoomInBtn");
       const pdfReaderZoomLabel = document.getElementById("pdfReaderZoomLabel");
+      const pdfReaderFitWidthBtn = document.getElementById("pdfReaderFitWidthBtn");
+      const pdfReaderMaximizeBtn = document.getElementById("pdfReaderMaximizeBtn");
+      const pdfReaderProgressRail = document.getElementById("pdfReaderProgressRail");
+      const pdfReaderCurrentPage = document.getElementById("pdfReaderCurrentPage");
+      const pdfReaderTotalPages = document.getElementById("pdfReaderTotalPages");
+      const pdfReaderPageSlider = document.getElementById("pdfReaderPageSlider");
+      const pdfReaderZoomRail = document.getElementById("pdfReaderZoomRail");
+      const pdfReaderZoomSlider = document.getElementById("pdfReaderZoomSlider");
+      const pdfReaderRailZoomLabel = document.getElementById("pdfReaderRailZoomLabel");
+      const pdfReaderRailZoomInBtn = document.getElementById("pdfReaderRailZoomInBtn");
+      const pdfReaderRailZoomOutBtn = document.getElementById("pdfReaderRailZoomOutBtn");
+      const pdfReaderZoomToast = document.getElementById("pdfReaderZoomToast");
       const pdfReaderNotesBtn = document.getElementById("pdfReaderNotesBtn");
       const closePdfReaderBtn = document.getElementById("closePdfReaderBtn");
       const pdfReaderNotesPanel = document.getElementById("pdfReaderNotesPanel");
@@ -4967,6 +5257,7 @@
         "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
       let pdfJsPromise = null;
       const pdfDocumentCache = new Map();
+      const pdfByteCache = new Map();
       let pdfRenderSchedule = null;
 
       let activePdfAssetId = null;
@@ -4978,6 +5269,21 @@
       let pdfReaderResizeState = null;
       let pdfReaderNotesTimer = null;
       let pdfReaderPageRenders = new Map();
+      let pdfRenderQueue = [];
+      const pdfRenderQueued = new Set();
+      let pdfRenderActiveCount = 0;
+      const PDF_RENDER_CONCURRENCY = 2;
+      let pdfReaderCurrentPageNumber = 1;
+      let pdfReaderScrollFrame = null;
+      let pdfZoomToastTimer = null;
+      let pdfReaderMaximized = false;
+
+      const activePenContacts = new Map();
+      const lastPenContactByZone = {
+        workspace: null,
+        pdf: null
+      };
+
       let lastCanvasPointer = null;
       let toastTimer = null;
       const DRAG_START_DISTANCE = 7;
@@ -7260,9 +7566,21 @@
         if (!asset?.dataUrl) throw new Error("PDF 文件数据已丢失");
 
         const pdfjs = await ensurePdfJs();
+        let bytes = pdfByteCache.get(assetId);
+        if (!bytes) {
+          bytes = dataUrlToUint8Array(asset.dataUrl);
+          pdfByteCache.set(assetId, bytes);
+        }
+
         const promise = pdfjs
-          .getDocument({ data: dataUrlToUint8Array(asset.dataUrl) })
+          .getDocument({
+            data: bytes.slice(),
+            useSystemFonts: true,
+            disableAutoFetch: false,
+            disableStream: false
+          })
           .promise;
+
         pdfDocumentCache.set(assetId, promise);
         return promise;
       }
@@ -7365,12 +7683,103 @@
         }
       }
 
-      function updatePdfReaderZoomLabel() {
-        pdfReaderZoomLabel.textContent = `${Math.round(pdfReaderZoom * 100)}%`;
+      function showPdfZoomToast() {
+        const label = `${Math.round(pdfReaderZoom * 100)}%`;
+        pdfReaderZoomToast.textContent = label;
+        pdfReaderZoomToast.classList.add("visible");
+        clearTimeout(pdfZoomToastTimer);
+        pdfZoomToastTimer = setTimeout(() => {
+          pdfReaderZoomToast.classList.remove("visible");
+        }, 900);
+      }
+
+      function updatePdfReaderZoomLabel({ announce = false } = {}) {
+        const percent = Math.round(pdfReaderZoom * 100);
+        const label = `${percent}%`;
+        pdfReaderZoomLabel.textContent = label;
+        pdfReaderRailZoomLabel.textContent = label;
+        pdfReaderZoomSlider.value = String(percent);
+        if (announce) showPdfZoomToast();
+      }
+
+      function setPdfReaderCurrentPage(pageNumber, { scroll = false } = {}) {
+        const asset = currentPdfAsset();
+        const total = activePdfDocument?.numPages || asset?.pageCount || 1;
+        const next = Math.max(1, Math.min(total, Number(pageNumber) || 1));
+
+        pdfReaderCurrentPageNumber = next;
+        pdfReaderCurrentPage.textContent = String(next);
+        pdfReaderTotalPages.textContent = String(total);
+        pdfReaderPageSlider.max = String(total);
+        pdfReaderPageSlider.value = String(next);
+        pdfReaderPageStatus.textContent = `${next} / ${total} 页`;
+
+        if (scroll) {
+          const pageEl = pdfReaderBody.querySelector(
+            `.pdf-reader-page[data-page-number="${next}"]`
+          );
+          pageEl?.scrollIntoView({ block: "start", behavior: "smooth" });
+        }
+      }
+
+      function updatePdfReaderCurrentPageFromScroll() {
+        pdfReaderScrollFrame = null;
+        const bodyRect = pdfReaderBody.getBoundingClientRect();
+        const targetY = bodyRect.top + Math.min(180, bodyRect.height * 0.3);
+        let bestPage = pdfReaderCurrentPageNumber;
+        let bestDistance = Infinity;
+
+        for (const pageEl of pdfReaderBody.querySelectorAll(".pdf-reader-page")) {
+          const rect = pageEl.getBoundingClientRect();
+          if (rect.bottom < bodyRect.top || rect.top > bodyRect.bottom) continue;
+          const distance = Math.abs(rect.top - targetY);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestPage = Number(pageEl.dataset.pageNumber);
+          }
+        }
+
+        setPdfReaderCurrentPage(bestPage);
+      }
+
+      function schedulePdfReaderCurrentPageUpdate() {
+        if (pdfReaderScrollFrame) return;
+        pdfReaderScrollFrame = requestAnimationFrame(
+          updatePdfReaderCurrentPageFromScroll
+        );
+      }
+
+      function setPdfReaderZoom(nextZoom, { announce = true } = {}) {
+        pdfReaderZoom = Math.max(0.55, Math.min(2.2, nextZoom));
+        ensurePdfReaderSettings().zoom = pdfReaderZoom;
+        updatePdfReaderZoomLabel({ announce });
+        refreshPdfReaderPages();
+        persistLibrary();
+      }
+
+      function setPdfReaderMaximized(enabled) {
+        pdfReaderMaximized = Boolean(enabled);
+        document.body.classList.toggle(
+          "pdf-reader-maximized",
+          pdfReaderMaximized
+        );
+        pdfReaderMaximizeBtn.textContent =
+          pdfReaderMaximized ? "↙" : "⛶";
+        pdfReaderMaximizeBtn.title =
+          pdfReaderMaximized ? "恢复左右分栏" : "占满整个应用窗口";
+
+        setTimeout(() => {
+          refreshPdfReaderPages();
+          schedulePdfReaderCurrentPageUpdate();
+        }, 180);
       }
 
       function closePdfReader({ preserveAsset = false } = {}) {
         pdfReaderAnnotationSession = null;
+        setPdfReaderMaximized(false);
+        pdfRenderQueue = [];
+        pdfRenderQueued.clear();
+        pdfRenderActiveCount = 0;
         pdfReaderObserver?.disconnect();
         pdfReaderObserver = null;
         pdfReaderPageRenders.clear();
@@ -7555,6 +7964,8 @@
           pdfReaderTool === "pan" ? "none" : "auto";
 
         canvas.addEventListener("pointerdown", event => {
+          recordPenContact(event, "pdf");
+
           if (pdfReaderTool === "pan") return;
           if (event.pointerType === "touch") return;
           if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -7600,6 +8011,8 @@
         });
 
         canvas.addEventListener("pointermove", event => {
+          recordPenContact(event, "pdf");
+
           const session = pdfReaderAnnotationSession;
           if (!session || session.pointerId !== event.pointerId) {
             if (
@@ -7641,6 +8054,8 @@
         });
 
         const finish = event => {
+          releasePenContact(event, "pdf");
+
           const session = pdfReaderAnnotationSession;
           if (!session || session.pointerId !== event.pointerId) return;
 
@@ -7662,8 +8077,86 @@
         canvas.addEventListener("pointerup", finish);
         canvas.addEventListener("pointercancel", finish);
         canvas.addEventListener("lostpointercapture", finish);
+        canvas.addEventListener(
+          "touchstart",
+          event => {
+            const stylusTouch = [...event.changedTouches].some(touch =>
+              isStylusLikeTouch(touch, "pdf")
+            );
+            if (stylusTouch) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          },
+          { capture: true, passive: false }
+        );
+
+        canvas.addEventListener(
+          "touchmove",
+          event => {
+            const stylusTouch = [...event.changedTouches].some(touch =>
+              isStylusLikeTouch(touch, "pdf")
+            );
+            if (stylusTouch) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          },
+          { capture: true, passive: false }
+        );
+
         canvas.addEventListener("contextmenu", event => event.preventDefault());
         canvas.addEventListener("selectstart", event => event.preventDefault());
+      }
+
+      function enqueuePdfReaderPage(pageNumber, pageEl, priority = 0) {
+        if (!pageEl || !activePdfDocument) return;
+
+        const key = `${pageNumber}:${pdfReaderZoom.toFixed(2)}`;
+        if (
+          pageEl.dataset.renderKey === key ||
+          pageEl.dataset.rendering === "true" ||
+          pdfRenderQueued.has(key)
+        ) {
+          return;
+        }
+
+        pdfRenderQueued.add(key);
+        pdfRenderQueue.push({
+          pageNumber,
+          pageEl,
+          priority,
+          key
+        });
+        pdfRenderQueue.sort((a, b) => b.priority - a.priority);
+        processPdfRenderQueue();
+      }
+
+      function processPdfRenderQueue() {
+        while (
+          pdfRenderActiveCount < PDF_RENDER_CONCURRENCY &&
+          pdfRenderQueue.length
+        ) {
+          const job = pdfRenderQueue.shift();
+          if (!job?.pageEl?.isConnected) {
+            pdfRenderQueued.delete(job?.key);
+            continue;
+          }
+
+          pdfRenderActiveCount += 1;
+          renderPdfReaderPage(job.pageNumber, job.pageEl)
+            .catch(error => {
+              console.error("PDF 队列渲染失败", error);
+            })
+            .finally(() => {
+              pdfRenderQueued.delete(job.key);
+              pdfRenderActiveCount = Math.max(
+                0,
+                pdfRenderActiveCount - 1
+              );
+              processPdfRenderQueue();
+            });
+        }
       }
 
       async function renderPdfReaderPage(pageNumber, pageEl) {
@@ -7700,7 +8193,7 @@
             scale: Math.max(0.35, fitScale * pdfReaderZoom)
           });
           const dpr = Math.min(
-            2,
+            1.45,
             Math.max(1, window.devicePixelRatio || 1)
           );
 
@@ -7759,12 +8252,19 @@
             for (const entry of entries) {
               if (!entry.isIntersecting) continue;
               const pageNumber = Number(entry.target.dataset.pageNumber);
-              renderPdfReaderPage(pageNumber, entry.target);
+              const priority =
+                1000 -
+                Math.abs(pageNumber - pdfReaderCurrentPageNumber) * 10;
+              enqueuePdfReaderPage(
+                pageNumber,
+                entry.target,
+                priority
+              );
             }
           },
           {
             root: pdfReaderBody,
-            rootMargin: "900px 0px",
+            rootMargin: "280px 0px",
             threshold: 0.01
           }
         );
@@ -7780,6 +8280,9 @@
       }
 
       function refreshPdfReaderPages() {
+        pdfRenderQueue = [];
+        pdfRenderQueued.clear();
+
         for (const renderTask of pdfReaderPageRenders.values()) {
           try {
             renderTask.cancel();
@@ -7829,7 +8332,12 @@
         );
         pdfReaderPanel.setAttribute("aria-hidden", "false");
         setPdfReaderTool("pan");
+        setPdfReaderMaximized(false);
         updatePdfReaderZoomLabel();
+        pdfReaderCurrentPage.textContent = "1";
+        pdfReaderTotalPages.textContent = String(asset.pageCount || 1);
+        pdfReaderPageSlider.max = String(asset.pageCount || 1);
+        pdfReaderPageSlider.value = "1";
 
         requestAnimationFrame(() => {
           applyTransform();
@@ -7858,7 +8366,18 @@
           }
 
           pdfReaderBody.appendChild(fragment);
+          setPdfReaderCurrentPage(1);
           observePdfReaderPages();
+
+          const firstPage = pdfReaderBody.querySelector(
+            '.pdf-reader-page[data-page-number="1"]'
+          );
+          const secondPage = pdfReaderBody.querySelector(
+            '.pdf-reader-page[data-page-number="2"]'
+          );
+          enqueuePdfReaderPage(1, firstPage, 5000);
+          if (secondPage) enqueuePdfReaderPage(2, secondPage, 4000);
+
           autosave();
         } catch (error) {
           console.error("打开 PDF 阅读器失败", error);
@@ -8636,6 +9155,67 @@
         return 0.5;
       }
 
+      function recordPenContact(event, zone) {
+        if (event.pointerType !== "pen") return;
+
+        const contact = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          time: performance.now(),
+          zone
+        };
+
+        activePenContacts.set(event.pointerId, contact);
+        lastPenContactByZone[zone] = contact;
+        lastPenActivityAt = contact.time;
+      }
+
+      function releasePenContact(event, zone) {
+        if (event.pointerType !== "pen") return;
+        recordPenContact(event, zone);
+
+        const pointerId = event.pointerId;
+        setTimeout(() => {
+          activePenContacts.delete(pointerId);
+        }, 240);
+      }
+
+      function touchContactRadius(touch) {
+        return Math.max(
+          Number(touch.radiusX) || 0,
+          Number(touch.radiusY) || 0
+        );
+      }
+
+      function isStylusLikeTouch(touch, zone) {
+        if (!touch) return false;
+
+        if (touch.touchType === "stylus") return true;
+
+        const radius = touchContactRadius(touch);
+        const force = Number(touch.force) || 0;
+
+        // Apple Pencil 的 Touch 事件通常接触面很小且带压力。
+        if (radius > 0 && radius <= 9 && force > 0.01) return true;
+
+        const now = performance.now();
+        const recentContacts = [
+          lastPenContactByZone[zone],
+          ...activePenContacts.values()
+        ].filter(Boolean);
+
+        return recentContacts.some(contact => {
+          if (now - contact.time > 260) return false;
+          return (
+            Math.hypot(
+              Number(touch.clientX) - contact.x,
+              Number(touch.clientY) - contact.y
+            ) < 92
+          );
+        });
+      }
+
       function canUsePointerForCanvasTool(event) {
         const settings = ensureDrawingSettings();
 
@@ -9298,6 +9878,8 @@
       }
 
       function handleCanvasToolPointerDown(event) {
+        recordPenContact(event, "workspace");
+
         if (event.pointerType === "touch" && tabletPanMode) {
           return beginDrawingTouchPan(event, { force: true });
         }
@@ -9416,6 +9998,8 @@
       }
 
       function handleCanvasToolPointerMove(event) {
+        recordPenContact(event, "workspace");
+
         if (moveDrawingTouchPan(event)) return true;
 
         if (
@@ -9481,6 +10065,8 @@
       }
 
       function releaseCanvasToolPointer(event) {
+        releasePenContact(event, "workspace");
+
         if (endDrawingTouchPan(event)) return true;
 
         if (
@@ -10195,6 +10781,13 @@
         }
 
         const touch = event.touches[0];
+
+        if (isStylusLikeTouch(touch, "workspace")) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
         if (touchLooksLikePalm(touch)) {
           event.preventDefault();
           event.stopPropagation();
@@ -10225,6 +10818,14 @@
 
         if (!touch) return;
 
+        if (isStylusLikeTouch(touch, "workspace")) {
+          touchEventPanState = null;
+          workspace.classList.remove("panning");
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
         const contactRadius = Math.max(
           Number(touch.radiusX) || 0,
           Number(touch.radiusY) || 0
@@ -10244,7 +10845,10 @@
           const distance = Math.hypot(dx, dy);
           const elapsed = performance.now() - touchEventPanState.startedAt;
 
-          if (distance < 9 || elapsed < 35) {
+          if (
+            distance < SINGLE_FINGER_PAN_START_DISTANCE ||
+            elapsed < SINGLE_FINGER_PAN_ARM_DELAY_MS
+          ) {
             event.preventDefault();
             event.stopPropagation();
             return;
@@ -11722,6 +12326,34 @@
       });
 
       fitBtn.addEventListener("click", fitView);
+      pdfReaderBody.addEventListener(
+        "touchstart",
+        event => {
+          const stylusTouch = [...event.changedTouches].some(touch =>
+            isStylusLikeTouch(touch, "pdf")
+          );
+          if (stylusTouch) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        },
+        { capture: true, passive: false }
+      );
+
+      pdfReaderBody.addEventListener(
+        "touchmove",
+        event => {
+          const stylusTouch = [...event.changedTouches].some(touch =>
+            isStylusLikeTouch(touch, "pdf")
+          );
+          if (stylusTouch) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        },
+        { capture: true, passive: false }
+      );
+
       pdfReaderPanBtn.addEventListener("click", () => {
         setPdfReaderTool("pan");
       });
@@ -11758,20 +12390,46 @@
       });
 
       pdfReaderZoomOutBtn.addEventListener("click", () => {
-        pdfReaderZoom = Math.max(0.55, pdfReaderZoom - 0.1);
-        ensurePdfReaderSettings().zoom = pdfReaderZoom;
-        updatePdfReaderZoomLabel();
-        refreshPdfReaderPages();
-        persistLibrary();
+        setPdfReaderZoom(pdfReaderZoom - 0.1);
       });
 
       pdfReaderZoomInBtn.addEventListener("click", () => {
-        pdfReaderZoom = Math.min(2.2, pdfReaderZoom + 0.1);
-        ensurePdfReaderSettings().zoom = pdfReaderZoom;
-        updatePdfReaderZoomLabel();
-        refreshPdfReaderPages();
-        persistLibrary();
+        setPdfReaderZoom(pdfReaderZoom + 0.1);
       });
+
+      pdfReaderRailZoomOutBtn.addEventListener("click", () => {
+        setPdfReaderZoom(pdfReaderZoom - 0.1);
+      });
+
+      pdfReaderRailZoomInBtn.addEventListener("click", () => {
+        setPdfReaderZoom(pdfReaderZoom + 0.1);
+      });
+
+      pdfReaderZoomSlider.addEventListener("input", () => {
+        setPdfReaderZoom(
+          Number(pdfReaderZoomSlider.value) / 100,
+          { announce: true }
+        );
+      });
+
+      pdfReaderFitWidthBtn.addEventListener("click", () => {
+        setPdfReaderZoom(1);
+      });
+
+      pdfReaderMaximizeBtn.addEventListener("click", () => {
+        setPdfReaderMaximized(!pdfReaderMaximized);
+      });
+
+      pdfReaderPageSlider.addEventListener("input", () => {
+        setPdfReaderCurrentPage(
+          Number(pdfReaderPageSlider.value),
+          { scroll: true }
+        );
+      });
+
+      pdfReaderBody.addEventListener("scroll", () => {
+        schedulePdfReaderCurrentPageUpdate();
+      }, { passive: true });
 
       pdfReaderNotesBtn.addEventListener("click", () => {
         pdfReaderNotesPanel.classList.toggle("visible");

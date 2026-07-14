@@ -1,25 +1,20 @@
-# GitHub Pages V15.6 更新
+# GitHub Pages V15.7 更新
 
-用本包内容覆盖现有仓库，然后执行：
+将本目录内容覆盖现有仓库，然后执行：
 
 ```bash
 git add .
-git commit -m "Update to V15.6 PDF side reader"
+git commit -m "Update to V15.7 touch and PDF performance fixes"
 git push
 ```
 
 部署完成后访问：
 
-`https://9leaa.github.io/infinite-mindmap/?v=15.6`
+`https://9leaa.github.io/infinite-mindmap/?v=15.7`
 
-## PDF.js
+若仍显示旧版本：
 
-完整 PDF 阅读器使用 PDF.js CDN。首次打开 PDF 时需要联网加载 PDF.js。
-
-PDF 文件、批注和阅读笔记仍保存在当前设备的 IndexedDB 中。
-
-## 从 V15.4 / V15.5 升级
-
-之前已经逐页展开到画布中的 PDF 页面不会被自动删除，仍可以继续使用。
-
-V15.6 新导入的 PDF 会使用新的“文件卡片 + 右侧阅读器”模式。
+1. 先备份全部笔记。
+2. 完全关闭 Safari 标签页或主屏幕应用。
+3. 使用带 `?v=15.7` 的网址重新打开。
+4. 不要在未备份前清除网站数据。
