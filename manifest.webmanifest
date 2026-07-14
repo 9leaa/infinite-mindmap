@@ -1,0 +1,22 @@
+{
+  "name": "无限画布思维导图",
+  "short_name": "无限画布",
+  "description": "支持思维导图、自由文字、图片、富文本、Apple Pencil 手写与本地笔记库的无限画布。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
