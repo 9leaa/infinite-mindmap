@@ -1,10 +1,12 @@
-const CACHE_NAME = "mindmap-v15-7";
+const CACHE_NAME = "mindmap-v15-8";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./vendor/pdf.min.mjs",
+  "./vendor/pdf.worker.min.mjs"
 ];
 
 self.addEventListener("install", event => {

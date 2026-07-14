@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V15.7",
+  "name": "无限画布思维导图 V15.8",
   "short_name": "无限画布",
-  "description": "稳定 Apple Pencil/手指识别、双悬浮工具、快速 PDF 阅读批注与 IndexedDB。",
+  "description": "PDF/Office 独立 Blob 存储、空闲期手写保存、虚拟 PDF 页面与 Apple Pencil 批注。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

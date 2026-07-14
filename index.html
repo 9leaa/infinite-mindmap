@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V15.7 触控与 PDF 性能修正版</title>
+  <title>无限画布思维导图 · V15.8 Blob 存储与极速手写版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -4267,14 +4267,23 @@
       }
     }
 
+  
+    /* V15.8：虚拟 PDF 页面和手写快速平移 */
+    .pdf-reader-page:not(:has(.pdf-reader-page-canvas)) {
+      background: linear-gradient(180deg, #ffffff, #f8fafc);
+    }
+
+    .pdf-reader-page:not(:has(.pdf-reader-page-canvas))
+      .pdf-reader-page-loading {
+      background: transparent;
+    }
+
+    .workspace.panning #drawCanvas,
+    .workspace.panning #laserCanvas {
+      pointer-events: none;
+    }
+
   </style>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <link rel="modulepreload"
-    href="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs"
-    crossorigin />
-  <link rel="preload" as="script"
-    href="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs"
-    crossorigin />
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -4948,8 +4957,9 @@
       const STORAGE_KEY = "infinite-mindmap-library-v15";
       const OLD_LIBRARY_STORAGE_KEY_V14_1 = "infinite-mindmap-library-v14-1";
       const LIBRARY_DB_NAME = "infinite-mindmap-library-db";
-      const LIBRARY_DB_VERSION = 1;
+      const LIBRARY_DB_VERSION = 2;
       const LIBRARY_STORE_NAME = "library";
+      const BINARY_ASSET_STORE_NAME = "binary-assets";
       const LIBRARY_RECORD_KEY = "main";
       const OLD_LIBRARY_STORAGE_KEY_V14 = "infinite-mindmap-library-v14";
       const OLD_LIBRARY_STORAGE_KEY_V13 = "infinite-mindmap-library-v13";
@@ -5230,6 +5240,7 @@
       let eraserRenderFrame = null;
       let touchEventPanState = null;
       let drawingTouchPanState = null;
+      let fastInkPanState = null;
       let tabletPanMode = false;
       let tabletToolbarDragState = null;
       let tabletToolbarSettings = null;
@@ -5247,10 +5258,12 @@
       let drawingCanvasDpr = 1;
       let lastPenActivityAt = 0;
       const PALM_REJECTION_GRACE_MS = 700;
-      const SINGLE_FINGER_PAN_START_DISTANCE = 14;
-      const SINGLE_FINGER_PAN_ARM_DELAY_MS = 90;
+      const SINGLE_FINGER_PAN_START_DISTANCE = 4;
+      const SINGLE_FINGER_PAN_ARM_DELAY_MS = 0;
       const SINGLE_FINGER_PAN_MAX_CONTACT = 48;
       const SINGLE_FINGER_PAN_CANCEL_CONTACT = 64;
+      const PDFJS_LOCAL_MODULE_URL = "./vendor/pdf.min.mjs";
+      const PDFJS_LOCAL_WORKER_URL = "./vendor/pdf.worker.min.mjs";
       const PDFJS_MODULE_URL =
         "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
       const PDFJS_WORKER_URL =
@@ -5272,7 +5285,9 @@
       let pdfRenderQueue = [];
       const pdfRenderQueued = new Set();
       let pdfRenderActiveCount = 0;
-      const PDF_RENDER_CONCURRENCY = 2;
+      function pdfRenderConcurrency() {
+        return isCoarsePointerDevice() ? 1 : 2;
+      }
       let pdfReaderCurrentPageNumber = 1;
       let pdfReaderScrollFrame = null;
       let pdfZoomToastTimer = null;
@@ -5396,11 +5411,16 @@
 
       function serializeCurrentState() {
         return {
-          ...cloneJson(state),
-          nodes: state.nodes.map(normalizeNode),
-          freeItems: (state.freeItems || []).map(normalizeFreeItem),
-          drawings: (state.drawings || []).map(normalizeDrawing),
+          nodes: state.nodes,
+          freeItems: state.freeItems || [],
+          assets: state.assets || {},
+          drawings: state.drawings || [],
           selectedFreeId: state.selectedFreeId || null,
+          selectedId: state.selectedId || null,
+          panX: state.panX,
+          panY: state.panY,
+          scale: state.scale,
+          theme: state.theme || "light",
           connectMode: false,
           connectSourceId: null
         };
@@ -5612,6 +5632,9 @@
             if (!db.objectStoreNames.contains(LIBRARY_STORE_NAME)) {
               db.createObjectStore(LIBRARY_STORE_NAME);
             }
+            if (!db.objectStoreNames.contains(BINARY_ASSET_STORE_NAME)) {
+              db.createObjectStore(BINARY_ASSET_STORE_NAME);
+            }
           };
 
           request.onsuccess = () => resolve(request.result);
@@ -5658,6 +5681,174 @@
             transaction.error || new Error("IndexedDB 写入被中止")
           );
         });
+      }
+
+      async function writeBinaryAsset(assetId, blob) {
+        const db = await openLibraryDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            BINARY_ASSET_STORE_NAME,
+            "readwrite"
+          );
+          transaction.objectStore(BINARY_ASSET_STORE_NAME).put(blob, assetId);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("保存附件二进制失败")
+          );
+          transaction.onabort = () => reject(
+            transaction.error || new Error("附件二进制写入被中止")
+          );
+        });
+      }
+
+      async function readBinaryAsset(assetId) {
+        const db = await openLibraryDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            BINARY_ASSET_STORE_NAME,
+            "readonly"
+          );
+          const request = transaction
+            .objectStore(BINARY_ASSET_STORE_NAME)
+            .get(assetId);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(
+            request.error || new Error("读取附件二进制失败")
+          );
+        });
+      }
+
+      async function deleteBinaryAsset(assetId) {
+        const db = await openLibraryDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            BINARY_ASSET_STORE_NAME,
+            "readwrite"
+          );
+          transaction.objectStore(BINARY_ASSET_STORE_NAME).delete(assetId);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(transaction.error);
+        });
+      }
+
+      async function dataUrlToBlobAsync(dataUrl) {
+        if (!dataUrl) return null;
+
+        try {
+          const response = await fetch(dataUrl);
+          return await response.blob();
+        } catch {
+          const comma = dataUrl.indexOf(",");
+          if (comma < 0) throw new Error("附件数据格式无效");
+
+          const mime =
+            dataUrl.slice(0, comma).match(/^data:([^;,]+)/)?.[1] ||
+            "application/octet-stream";
+          const binary = atob(dataUrl.slice(comma + 1));
+          const bytes = new Uint8Array(binary.length);
+
+          for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+          }
+
+          return new Blob([bytes], { type: mime });
+        }
+      }
+
+      function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(
+            reader.error || new Error("附件转码失败")
+          );
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      async function ensureBinaryAsset(assetId, asset) {
+        let blob = await readBinaryAsset(assetId);
+        if (blob) return blob;
+
+        if (asset?.dataUrl) {
+          blob = await dataUrlToBlobAsync(asset.dataUrl);
+          await writeBinaryAsset(assetId, blob);
+          delete asset.dataUrl;
+          asset.storage = "idb-blob";
+          asset.blobKey = assetId;
+          return blob;
+        }
+
+        throw new Error("附件原文件不存在");
+      }
+
+      async function migrateEmbeddedBinaryAssets() {
+        let changed = false;
+        const processed = new Set();
+
+        const migrateAssetMap = async assets => {
+          if (!assets || typeof assets !== "object") return;
+
+          for (const [assetId, asset] of Object.entries(assets)) {
+            if (
+              processed.has(assetId) ||
+              !asset?.dataUrl ||
+              !["pdf", "office"].includes(asset.type)
+            ) {
+              continue;
+            }
+
+            processed.add(assetId);
+            try {
+              await ensureBinaryAsset(assetId, asset);
+              changed = true;
+            } catch (error) {
+              console.warn("附件 Blob 迁移失败", assetId, error);
+            }
+          }
+        };
+
+        await migrateAssetMap(state?.assets);
+
+        const current = currentDocument();
+        if (current && state?.assets) {
+          current.state.assets = state.assets;
+        }
+
+        for (const doc of Object.values(library?.documents || {})) {
+          if (doc === current) continue;
+          await migrateAssetMap(doc.state?.assets);
+        }
+
+        if (changed) {
+          await persistLibraryImmediately();
+          setBrowserStorageStatus(
+            "PDF/Office 已迁移到独立 Blob 存储",
+            "ok"
+          );
+        }
+      }
+
+      async function materializeAssetsForExport(sourceLibrary) {
+        const exported = cloneJson(sourceLibrary);
+
+        for (const doc of Object.values(exported.documents || {})) {
+          const assets = doc.state?.assets || {};
+
+          for (const [assetId, asset] of Object.entries(assets)) {
+            if (
+              asset?.dataUrl ||
+              !["pdf", "office"].includes(asset?.type)
+            ) {
+              continue;
+            }
+
+            const blob = await readBinaryAsset(assetId);
+            if (blob) asset.dataUrl = await blobToDataUrl(blob);
+          }
+        }
+
+        return exported;
       }
 
       async function refreshBrowserStorageStatus({ force = false } = {}) {
@@ -5710,10 +5901,8 @@
       }
 
       function cloneLibraryForStorage() {
-        if (typeof structuredClone === "function") {
-          return structuredClone(library);
-        }
-        return JSON.parse(JSON.stringify(library));
+        // IndexedDB.put 自身会结构化克隆；不再提前复制整库。
+        return library;
       }
 
       async function flushLibraryPersistence() {
@@ -6111,14 +6300,24 @@
         await writable.close();
       }
 
-      function currentDocumentPayload() {
+      async function currentDocumentPayload() {
         updateCurrentDocument();
         const doc = currentDocument();
+
+        const temporaryLibrary = {
+          documents: {
+            [doc.id]: cloneJson(doc)
+          }
+        };
+        const exported = await materializeAssetsForExport(
+          temporaryLibrary
+        );
+
         return {
           kind: "infinite-mindmap-document",
           version: 15,
           exportedAt: nowIso(),
-          document: cloneJson(doc)
+          document: exported.documents[doc.id]
         };
       }
 
@@ -6127,7 +6326,7 @@
         const doc = currentDocument();
         if (!doc) return;
 
-        const payload = currentDocumentPayload();
+        const payload = await currentDocumentPayload();
         const suggestedName = `${safeFileName(doc.title)}.mindmap.json`;
 
         if (!("showSaveFilePicker" in window)) {
@@ -6195,6 +6394,7 @@
         state = ensureStateCollections(cloneJson(imported.state));
         initializeHistoryForCurrent({ force: true });
         if (handle) await storeHandle(imported.id, handle);
+        await migrateEmbeddedBinaryAssets();
         persistLibrary();
         renderDocumentList();
         applyTheme(state.theme);
@@ -6227,18 +6427,19 @@
         }
       }
 
-      function libraryPayload() {
+      async function libraryPayload() {
         updateCurrentDocument();
         return {
           kind: "infinite-mindmap-library",
           version: 15,
           exportedAt: nowIso(),
-          library: cloneJson(library)
+          library: await materializeAssetsForExport(library)
         };
       }
 
       async function backupWholeLibrary() {
-        const payload = libraryPayload();
+        statusEl.textContent = "正在将 PDF/附件加入完整备份…";
+        const payload = await libraryPayload();
         const suggestedName = `mindmap-library-${new Date().toISOString().slice(0, 10)}.json`;
 
         if (!("showSaveFilePicker" in window)) {
@@ -6267,7 +6468,7 @@
         }
       }
 
-      function importLibraryData(parsed) {
+      async function importLibraryData(parsed) {
         const sourceLibrary = parsed?.library || parsed;
         const sourceDocs = sourceLibrary?.documents;
         if (!sourceDocs || typeof sourceDocs !== "object") {
@@ -6303,6 +6504,7 @@
           initializeHistoryForCurrent({ force: true });
         }
 
+        await migrateEmbeddedBinaryAssets();
         persistLibrary();
         renderDocumentList();
         applyTheme(state.theme);
@@ -6742,11 +6944,56 @@
         refreshSelectionRendering();
       }
 
-      function applyTransform() {
-        scene.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
-        workspace.style.backgroundSize = `${24 * state.scale}px ${24 * state.scale}px`;
-        workspace.style.backgroundPosition = `${state.panX}px ${state.panY}px`;
+      function applySceneTransformOnly() {
+        scene.style.transform =
+          `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        workspace.style.backgroundSize =
+          `${24 * state.scale}px ${24 * state.scale}px`;
+        workspace.style.backgroundPosition =
+          `${state.panX}px ${state.panY}px`;
         zoomLabel.textContent = `${Math.round(state.scale * 100)}%`;
+      }
+
+      function beginFastInkPan() {
+        if (currentStroke || laserStroke || eraserPointerId !== null) return;
+        fastInkPanState = {
+          panX: state.panX,
+          panY: state.panY
+        };
+        drawCanvas.style.willChange = "transform";
+        laserCanvas.style.willChange = "transform";
+      }
+
+      function updateFastInkPan() {
+        applySceneTransformOnly();
+
+        if (!fastInkPanState) {
+          scheduleDrawingCanvasRender();
+          scheduleLaserRender();
+          return;
+        }
+
+        const dx = state.panX - fastInkPanState.panX;
+        const dy = state.panY - fastInkPanState.panY;
+        const transform = `translate3d(${dx}px, ${dy}px, 0)`;
+        drawCanvas.style.transform = transform;
+        laserCanvas.style.transform = transform;
+      }
+
+      function endFastInkPan() {
+        if (!fastInkPanState) return;
+        fastInkPanState = null;
+        drawCanvas.style.transform = "";
+        laserCanvas.style.transform = "";
+        drawCanvas.style.willChange = "";
+        laserCanvas.style.willChange = "";
+        scheduleDrawingCanvasRender();
+        scheduleLaserRender();
+        scheduleVisiblePdfPageRender();
+      }
+
+      function applyTransform() {
+        applySceneTransformOnly();
         scheduleDrawingCanvasRender();
         scheduleLaserRender();
         scheduleVisiblePdfPageRender();
@@ -7538,10 +7785,19 @@
 
       async function ensurePdfJs() {
         if (!pdfJsPromise) {
-          pdfJsPromise = import(PDFJS_MODULE_URL).then(module => {
-            module.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-            return module;
-          });
+          pdfJsPromise = import(PDFJS_LOCAL_MODULE_URL)
+            .then(module => {
+              module.GlobalWorkerOptions.workerSrc =
+                PDFJS_LOCAL_WORKER_URL;
+              return module;
+            })
+            .catch(() =>
+              import(PDFJS_MODULE_URL).then(module => {
+                module.GlobalWorkerOptions.workerSrc =
+                  PDFJS_WORKER_URL;
+                return module;
+              })
+            );
         }
         return pdfJsPromise;
       }
@@ -7563,12 +7819,14 @@
         }
 
         const asset = state.assets?.[assetId];
-        if (!asset?.dataUrl) throw new Error("PDF 文件数据已丢失");
+        if (!asset) throw new Error("PDF 元数据已丢失");
 
         const pdfjs = await ensurePdfJs();
         let bytes = pdfByteCache.get(assetId);
+
         if (!bytes) {
-          bytes = dataUrlToUint8Array(asset.dataUrl);
+          const blob = await ensureBinaryAsset(assetId, asset);
+          bytes = new Uint8Array(await blob.arrayBuffer());
           pdfByteCache.set(assetId, bytes);
         }
 
@@ -7813,18 +8071,13 @@
         const pageEl = document.createElement("section");
         pageEl.className = "pdf-reader-page loading";
         pageEl.dataset.pageNumber = String(pageNumber);
+        pageEl.style.height = "1040px";
         pageEl.innerHTML = `
           <span class="pdf-reader-page-number">第 ${pageNumber} 页</span>
-          <canvas class="pdf-reader-page-canvas"></canvas>
-          <canvas class="pdf-reader-annotation-canvas"></canvas>
-          <div class="pdf-reader-page-loading">等待渲染第 ${pageNumber} 页…</div>
+          <div class="pdf-reader-page-loading">
+            第 ${pageNumber} 页将在接近屏幕时渲染
+          </div>
         `;
-
-        const annotationCanvas = pageEl.querySelector(
-          ".pdf-reader-annotation-canvas"
-        );
-        bindPdfAnnotationCanvas(annotationCanvas, pageNumber);
-
         return pageEl;
       }
 
@@ -7952,7 +8205,7 @@
         if (bestIndex >= 0) {
           strokes.splice(bestIndex, 1);
           redrawPdfAnnotationCanvas(pageNumber);
-          autosave();
+          autosaveInk();
           return true;
         }
 
@@ -8066,7 +8319,7 @@
             const asset = currentPdfAsset();
             if (asset) {
               pdfAnnotationList(asset, pageNumber).push(session.stroke);
-              autosave();
+              autosaveInk();
             }
           }
 
@@ -8134,7 +8387,7 @@
 
       function processPdfRenderQueue() {
         while (
-          pdfRenderActiveCount < PDF_RENDER_CONCURRENCY &&
+          pdfRenderActiveCount < pdfRenderConcurrency() &&
           pdfRenderQueue.length
         ) {
           const job = pdfRenderQueue.shift();
@@ -8173,10 +8426,23 @@
 
         pageEl.dataset.rendering = "true";
         const loading = pageEl.querySelector(".pdf-reader-page-loading");
-        const pdfCanvas = pageEl.querySelector(".pdf-reader-page-canvas");
-        const annotationCanvas = pageEl.querySelector(
+        let pdfCanvas = pageEl.querySelector(".pdf-reader-page-canvas");
+        let annotationCanvas = pageEl.querySelector(
           ".pdf-reader-annotation-canvas"
         );
+
+        if (!pdfCanvas || !annotationCanvas) {
+          pdfCanvas = document.createElement("canvas");
+          pdfCanvas.className = "pdf-reader-page-canvas";
+
+          annotationCanvas = document.createElement("canvas");
+          annotationCanvas.className = "pdf-reader-annotation-canvas";
+
+          pageEl.insertBefore(pdfCanvas, loading);
+          pageEl.insertBefore(annotationCanvas, loading);
+          bindPdfAnnotationCanvas(annotationCanvas, pageNumber);
+          setPdfReaderTool(pdfReaderTool);
+        }
 
         try {
           loading.hidden = false;
@@ -8192,10 +8458,9 @@
           const viewport = page.getViewport({
             scale: Math.max(0.35, fitScale * pdfReaderZoom)
           });
-          const dpr = Math.min(
-            1.45,
-            Math.max(1, window.devicePixelRatio || 1)
-          );
+          const dpr = isCoarsePointerDevice()
+            ? 1
+            : Math.min(1.25, Math.max(1, window.devicePixelRatio || 1));
 
           pdfCanvas.width = Math.max(
             1,
@@ -8250,8 +8515,34 @@
         pdfReaderObserver = new IntersectionObserver(
           entries => {
             for (const entry of entries) {
-              if (!entry.isIntersecting) continue;
               const pageNumber = Number(entry.target.dataset.pageNumber);
+
+              if (!entry.isIntersecting) {
+                if (
+                  Math.abs(pageNumber - pdfReaderCurrentPageNumber) > 4 &&
+                  entry.target.dataset.rendering !== "true"
+                ) {
+                  entry.target
+                    .querySelectorAll(
+                      ".pdf-reader-page-canvas, .pdf-reader-annotation-canvas"
+                    )
+                    .forEach(canvas => canvas.remove());
+
+                  entry.target.dataset.renderKey = "";
+                  entry.target.classList.add("loading");
+
+                  const loading = entry.target.querySelector(
+                    ".pdf-reader-page-loading"
+                  );
+                  if (loading) {
+                    loading.hidden = false;
+                    loading.textContent =
+                      `第 ${pageNumber} 页将在接近屏幕时渲染`;
+                  }
+                }
+                continue;
+              }
+
               const priority =
                 1000 -
                 Math.abs(pageNumber - pdfReaderCurrentPageNumber) * 10;
@@ -8264,7 +8555,7 @@
           },
           {
             root: pdfReaderBody,
-            rootMargin: "280px 0px",
+            rootMargin: "120px 0px",
             threshold: 0.01
           }
         );
@@ -8298,7 +8589,8 @@
           pageEl.dataset.renderKey = "";
           pageEl.dataset.rendering = "false";
           pageEl.classList.add("loading");
-          pageEl.querySelector(".pdf-reader-page-loading").hidden = false;
+          const loading = pageEl.querySelector(".pdf-reader-page-loading");
+          if (loading) loading.hidden = false;
         }
 
         observePdfReaderPages();
@@ -8462,15 +8754,23 @@
         });
       }
 
-      function downloadAsset(assetId) {
+      async function downloadAsset(assetId) {
         const asset = state.assets?.[assetId];
-        if (!asset?.dataUrl) return;
-        const link = document.createElement("a");
-        link.href = asset.dataUrl;
-        link.download = asset.name || "document";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        if (!asset) return;
+
+        try {
+          const blob = await ensureBinaryAsset(assetId, asset);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = asset.name || "document";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1500);
+        } catch (error) {
+          alert(`附件下载失败：${error.message}`);
+        }
       }
 
       function renderFreeItems() {
@@ -9178,7 +9478,7 @@
         const pointerId = event.pointerId;
         setTimeout(() => {
           activePenContacts.delete(pointerId);
-        }, 240);
+        }, 24);
       }
 
       function touchContactRadius(touch) {
@@ -9206,12 +9506,12 @@
         ].filter(Boolean);
 
         return recentContacts.some(contact => {
-          if (now - contact.time > 260) return false;
+          if (now - contact.time > 48) return false;
           return (
             Math.hypot(
               Number(touch.clientX) - contact.x,
               Number(touch.clientY) - contact.y
-            ) < 92
+            ) < 34
           );
         });
       }
@@ -10107,7 +10407,7 @@
           currentStroke = null;
           currentStrokeRenderedCount = 0;
           document.body.classList.remove("inking-active");
-          autosave();
+          autosaveInk();
           return true;
         }
 
@@ -10128,7 +10428,7 @@
         ) {
           event.preventDefault();
           event.stopPropagation();
-          if (eraserChanged) autosave();
+          if (eraserChanged) autosaveInk();
           eraserChanged = false;
           eraserPointerId = null;
           eraserPreviousPoint = null;
@@ -10821,6 +11121,7 @@
         if (isStylusLikeTouch(touch, "workspace")) {
           touchEventPanState = null;
           workspace.classList.remove("panning");
+          endFastInkPan();
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -10834,6 +11135,7 @@
         if (contactRadius > 48) {
           touchEventPanState = null;
           workspace.classList.remove("panning");
+          endFastInkPan();
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -10858,6 +11160,7 @@
           touchEventPanState.lastClientX = touch.clientX;
           touchEventPanState.lastClientY = touch.clientY;
           workspace.classList.add("panning");
+          beginFastInkPan();
 
           event.preventDefault();
           event.stopPropagation();
@@ -10868,7 +11171,7 @@
         state.panY += touch.clientY - touchEventPanState.lastClientY;
         touchEventPanState.lastClientX = touch.clientX;
         touchEventPanState.lastClientY = touch.clientY;
-        applyTransform();
+        updateFastInkPan();
 
         event.preventDefault();
         event.stopPropagation();
@@ -10886,6 +11189,7 @@
         const changed = touchEventPanState.started;
         touchEventPanState = null;
         workspace.classList.remove("panning");
+        endFastInkPan();
         if (changed) autosave();
 
         event.preventDefault();
@@ -11608,21 +11912,27 @@
       }
 
       async function importPdfFile(file) {
-        if (file.size > 60 * 1024 * 1024) {
+        if (file.size > 100 * 1024 * 1024) {
           const proceed = window.confirm(
             `这个 PDF 大约 ${formatFileSize(file.size)}。` +
-            `保存到浏览器后会占用较多 IndexedDB 空间，备份文件也会较大。继续导入吗？`
+            `文件会保存到独立 Blob 存储，不会拖慢日常手写保存。继续导入吗？`
           );
           if (!proceed) return;
         }
 
-        statusEl.textContent = "正在读取 PDF 文件…";
-        const dataUrl = await readFileAsDataUrl(file);
-        const pdfjs = await ensurePdfJs();
-        const bytes = dataUrlToUint8Array(dataUrl);
-        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
-
+        statusEl.textContent = "正在读取 PDF 目录…";
         const assetId = uid("asset");
+        await writeBinaryAsset(assetId, file);
+
+        const pdfjs = await ensurePdfJs();
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        pdfByteCache.set(assetId, bytes);
+
+        const pdf = await pdfjs.getDocument({
+          data: bytes.slice(),
+          useSystemFonts: true
+        }).promise;
+
         state.assets = state.assets || {};
         state.assets[assetId] = {
           id: assetId,
@@ -11630,7 +11940,8 @@
           name: file.name,
           mime: file.type || "application/pdf",
           size: file.size,
-          dataUrl,
+          storage: "idb-blob",
+          blobKey: assetId,
           pageCount: pdf.numPages,
           pdfAnnotations: {},
           readerNotes: ""
@@ -11661,14 +11972,16 @@
         renderFreeItems();
         autosave();
         statusEl.textContent =
-          `PDF 已导入为文件卡片：${pdf.numPages} 页。点击“打开阅读”在右侧阅读和批注。`;
+          `PDF 已导入：${pdf.numPages} 页。原文件独立保存，不会阻塞手写自动保存。`;
       }
 
       async function importOfficeAttachment(file) {
-        const dataUrl = await readFileAsDataUrl(file);
         const extension =
           "." + (file.name.split(".").pop() || "file").toLowerCase();
         const assetId = uid("asset");
+
+        await writeBinaryAsset(assetId, file);
+
         state.assets = state.assets || {};
         state.assets[assetId] = {
           id: assetId,
@@ -11677,7 +11990,8 @@
           mime: file.type || "application/octet-stream",
           extension,
           size: file.size,
-          dataUrl
+          storage: "idb-blob",
+          blobKey: assetId
         };
 
         const rect = workspace.getBoundingClientRect();
@@ -11704,7 +12018,7 @@
         renderFreeItems();
         autosave();
         statusEl.textContent =
-          "Office 文件已作为附件保存。转换为 PDF 后可逐页展开批注。";
+          "Office 文件已保存到独立 Blob 存储。转换为 PDF 后可逐页批注。";
       }
 
       async function importDocumentFile(file) {
@@ -12739,10 +13053,11 @@
         statusEl.textContent = "当前笔记已保存到浏览器笔记库";
       });
 
-      exportBtn.addEventListener("click", () => {
+      exportBtn.addEventListener("click", async () => {
         const doc = currentDocument();
+        const payload = await currentDocumentPayload();
         downloadJson(
-          currentDocumentPayload(),
+          payload,
           `${safeFileName(doc?.title || "未命名笔记")}.mindmap.json`
         );
       });
@@ -12751,7 +13066,7 @@
         const file = importInput.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           try {
             const parsed = JSON.parse(reader.result);
             const imported = parsed.state || parsed;
@@ -12772,10 +13087,12 @@
               theme: imported.theme || "light"
             };
             applyTheme(state.theme);
+            await migrateEmbeddedBinaryAssets();
             saveState();
             applyTransform();
             renderNodes();
             renderFreeItems();
+            renderDrawings();
             setSelected(state.selectedId);
             statusEl.textContent = "导入完成";
           } catch (error) {
@@ -12857,9 +13174,9 @@
         const file = importLibraryInput.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           try {
-            importLibraryData(JSON.parse(reader.result));
+            await importLibraryData(JSON.parse(reader.result));
             statusEl.textContent = `已合并笔记库：${file.name}`;
           } catch (error) {
             alert(`导入笔记库失败：${error.message}`);
@@ -13389,6 +13706,8 @@
       }
 
       let autosaveTimer = null;
+      let inkSaveIdleHandle = null;
+      let historyIdleHandle = null;
       let documentListRefreshTimer = null;
 
       function scheduleDocumentListRefresh() {
@@ -13396,12 +13715,59 @@
         documentListRefreshTimer = setTimeout(renderDocumentList, 900);
       }
 
+      function cancelIdleTask(handle) {
+        if (!handle) return;
+        if ("cancelIdleCallback" in window) cancelIdleCallback(handle);
+        else clearTimeout(handle);
+      }
+
+      function scheduleIdleTask(callback, timeout = 1800) {
+        if ("requestIdleCallback" in window) {
+          return requestIdleCallback(callback, { timeout });
+        }
+        return setTimeout(callback, Math.min(700, timeout));
+      }
+
       function autosave() {
         const history = currentHistory();
         if (history) history.dirty = true;
         updateHistoryButtons();
         clearTimeout(autosaveTimer);
-        autosaveTimer = setTimeout(saveState, 320);
+        autosaveTimer = setTimeout(saveState, 420);
+      }
+
+      function autosaveInk() {
+        const history = currentHistory();
+        if (history) history.dirty = true;
+        updateHistoryButtons();
+
+        clearTimeout(autosaveTimer);
+        cancelIdleTask(inkSaveIdleHandle);
+        cancelIdleTask(historyIdleHandle);
+
+        const doc = currentDocument();
+        if (doc) {
+          doc.state = serializeCurrentState();
+          doc.updatedAt = nowIso();
+        }
+
+        inkSaveIdleHandle = scheduleIdleTask(() => {
+          inkSaveIdleHandle = null;
+          persistLibrary();
+          scheduleDocumentListRefresh();
+        }, 1200);
+
+        historyIdleHandle = scheduleIdleTask(() => {
+          historyIdleHandle = null;
+          if (
+            !currentStroke &&
+            !pdfReaderAnnotationSession &&
+            !touchEventPanState &&
+            !panState
+          ) {
+            commitHistory();
+          }
+        }, 3200);
       }
 
       function normalizeLoadedLibrary(parsed) {
@@ -13558,6 +13924,7 @@
       }
 
       await loadState();
+      await migrateEmbeddedBinaryAssets();
       state = ensureStateCollections(state);
       initializeHistoryForCurrent({ force: true });
       requestPersistentBrowserStorage().finally(() => {
