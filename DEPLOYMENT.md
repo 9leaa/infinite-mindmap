@@ -1,35 +1,25 @@
-# GitHub Pages V15.4 更新
+# GitHub Pages V15.6 更新
 
 用本包内容覆盖现有仓库，然后执行：
 
 ```bash
 git add .
-git commit -m "Update to V15.4 dual toolbar and PDF annotation"
+git commit -m "Update to V15.6 PDF side reader"
 git push
 ```
 
-等待 GitHub Actions 完成部署。
+部署完成后访问：
 
-## PDF 注意事项
+`https://9leaa.github.io/infinite-mindmap/?v=15.6`
 
-PDF 页面渲染使用 PDF.js CDN：
+## PDF.js
 
-- 首次打开 PDF 时需要联网。
-- 浏览器成功加载后通常会缓存相关资源。
-- PDF 原文件数据保存在当前设备 IndexedDB 中。
-- 大型电子书应分批导入页码范围，避免一次创建数百个页面对象。
+完整 PDF 阅读器使用 PDF.js CDN。首次打开 PDF 时需要联网加载 PDF.js。
 
-## Office 文件
+PDF 文件、批注和阅读笔记仍保存在当前设备的 IndexedDB 中。
 
-DOC/DOCX/PPT/PPTX 当前作为附件保存在笔记库。
+## 从 V15.4 / V15.5 升级
 
-需要直接逐页批注时，请先在系统或 Office 中导出为 PDF，再导入应用。
+之前已经逐页展开到画布中的 PDF 页面不会被自动删除，仍可以继续使用。
 
-## 更新后仍显示旧版
-
-Service Worker 可能仍在使用旧缓存：
-
-1. 先备份全部笔记。
-2. 关闭浏览器标签页或主屏幕应用。
-3. 重新打开项目地址。
-4. 必要时访问 `?v=15.4`。
+V15.6 新导入的 PDF 会使用新的“文件卡片 + 右侧阅读器”模式。

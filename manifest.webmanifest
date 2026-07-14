@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V15.4",
+  "name": "无限画布思维导图 V15.6",
   "short_name": "无限画布",
-  "description": "支持 Apple Pencil、双悬浮工具栏、PDF 逐页展开和本地 IndexedDB 的无限画布。",
+  "description": "左侧无限画布思维导图，右侧完整 PDF 连续阅读、划重点与 Apple Pencil 批注。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
