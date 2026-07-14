@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V15.3 平板工具切换修正版</title>
+  <title>无限画布思维导图 · V15.4 双悬浮工具与 PDF 批注版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -3175,6 +3175,302 @@
       }
     }
 
+  
+    /* V15.4：稳定书写、双悬浮工具、PDF 页面与附件卡片 */
+    html,
+    body,
+    .app,
+    .workspace {
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: auto;
+    }
+
+    html,
+    body {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100dvh;
+      min-height: 100%;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .workspace {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      contain: layout paint style;
+    }
+
+    body.inking-active,
+    body.inking-active * {
+      -webkit-user-select: none !important;
+      user-select: none !important;
+      -webkit-touch-callout: none !important;
+    }
+
+    .node-title[data-editing="true"],
+    .node-content[data-editing="true"],
+    .free-text[data-editing="true"],
+    input,
+    textarea,
+    [contenteditable="true"] {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+    }
+
+    .tablet-action-dock {
+      display: none !important;
+    }
+
+    .mindmap-floating-toolbar {
+      position: fixed;
+      left: 18px;
+      top: 118px;
+      z-index: 735;
+      display: none;
+      align-items: center;
+      gap: 4px;
+      max-width: min(760px, calc(100vw - 16px));
+      min-height: 50px;
+      padding: 5px;
+      overflow-x: auto;
+      border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+      border-radius: 15px;
+      background: color-mix(in srgb, var(--panel-bg) 93%, transparent);
+      box-shadow: 0 15px 42px rgba(15, 23, 42, 0.22);
+      backdrop-filter: blur(18px) saturate(1.2);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      touch-action: none;
+      scrollbar-width: none;
+    }
+
+    .mindmap-floating-toolbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mindmap-floating-toolbar.dragging {
+      box-shadow: 0 20px 58px rgba(15, 23, 42, 0.3);
+    }
+
+    .mindmap-floating-toolbar button {
+      flex: 0 0 auto;
+      min-width: 52px;
+      min-height: 42px;
+      display: grid;
+      grid-template-rows: 21px 13px;
+      place-items: center;
+      gap: 1px;
+      padding: 3px 7px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+      font-size: 10px;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .mindmap-floating-toolbar button:hover,
+    .mindmap-floating-toolbar button.active {
+      border-color: color-mix(in srgb, var(--primary) 38%, transparent);
+      background: color-mix(in srgb, var(--primary) 13%, transparent);
+      color: var(--primary);
+    }
+
+    .mindmap-floating-toolbar .mindmap-toolbar-drag {
+      min-width: 30px;
+      width: 30px;
+      padding: 0;
+      grid-template-rows: 1fr;
+      color: var(--muted);
+      cursor: grab;
+      font-size: 18px;
+    }
+
+    .mindmap-floating-toolbar.collapsed button:not(.mindmap-toolbar-drag):not(#tabletDockCollapseBtn) {
+      display: none;
+    }
+
+    .mindmap-floating-toolbar.collapsed {
+      max-width: 78px;
+    }
+
+    .tablet-more-panel {
+      position: fixed !important;
+      left: 18px;
+      right: auto !important;
+      top: 176px;
+      bottom: auto !important;
+      z-index: 745 !important;
+      width: min(420px, calc(100vw - 20px));
+      max-height: min(520px, calc(100dvh - 24px));
+      overflow: auto;
+    }
+
+    .tablet-more-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    @media (pointer: coarse) {
+      .mindmap-floating-toolbar {
+        display: flex;
+      }
+
+      body.pure-mode .mindmap-floating-toolbar {
+        display: flex !important;
+      }
+
+      body.pure-mode .workspace {
+        padding-bottom: 0 !important;
+      }
+
+      .status {
+        bottom: 12px !important;
+      }
+    }
+
+    .free-pdf-page-item {
+      min-width: 260px;
+      min-height: 340px;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #e5e7eb;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+    }
+
+    .pdf-page-header {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 10px;
+      border-bottom: 1px solid rgba(100, 116, 139, 0.28);
+      background: color-mix(in srgb, var(--panel-bg) 96%, transparent);
+      color: var(--muted);
+      font-size: 11px;
+      overflow: hidden;
+    }
+
+    .pdf-page-header strong {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pdf-page-canvas-wrap {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 34px;
+      bottom: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: white;
+      pointer-events: none;
+    }
+
+    .pdf-page-canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      pointer-events: none;
+    }
+
+    .pdf-page-loading {
+      position: absolute;
+      inset: 34px 0 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      color: #64748b;
+      background: rgba(255, 255, 255, 0.82);
+      font-size: 12px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .free-attachment-item {
+      min-width: 300px;
+      min-height: 150px;
+      padding: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--panel-bg) 96%, transparent);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+    }
+
+    .attachment-card {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr auto;
+      gap: 5px 10px;
+      color: var(--text);
+    }
+
+    .attachment-icon {
+      grid-row: 1 / 5;
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--primary) 12%, transparent);
+      color: var(--primary);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .attachment-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .attachment-meta,
+    .attachment-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .attachment-download {
+      justify-self: start;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--control-bg, white);
+      color: var(--text);
+      font-size: 11px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    @media (max-width: 760px) {
+      .mindmap-floating-toolbar {
+        max-width: calc(100vw - 12px);
+      }
+
+      .mindmap-floating-toolbar button {
+        min-width: 48px;
+      }
+
+      .tablet-more-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+    }
+
   </style>
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3240,9 +3536,14 @@
           <span class="toolbar-group-label">创建与编辑</span>
           <button id="addFrameBtn" title="添加重点矩形框">□ 框</button>
           <button id="addLineBtn" title="添加横向分隔线">— 线</button>
-          <label class="file-label" title="快捷键 I">
+          <label class="file-label" title="导入图片">
             图片
             <input id="freeImageInput" type="file" accept="image/*" />
+          </label>
+          <label class="file-label" title="导入 PDF、Word 或 PowerPoint">
+            文档
+            <input id="documentFileInput" type="file"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
           </label>
           <button id="editTextBtn" title="Enter 或 F2">
             编辑 <span class="shortcut-key">↵</span>
@@ -3665,7 +3966,10 @@
     已进入纯模式。平板可点击左上角“退出纯模式”。
   </div>
 
-  <div id="tabletActionDock" class="tablet-action-dock" aria-label="平板操作栏">
+  <div id="tabletActionDock" class="mindmap-floating-toolbar"
+    aria-label="思维导图悬浮工具">
+    <button id="tabletDockDrag" class="mindmap-toolbar-drag" type="button"
+      title="拖动思维导图工具栏">⠿</button>
     <button id="tabletPanBtn" type="button" title="手掌移动画布">
       <span class="tablet-action-icon">✋</span><span>移动</span>
     </button>
@@ -3675,20 +3979,23 @@
     <button id="tabletAddNodeBtn" type="button" title="新建节点">
       <span class="tablet-action-icon">＋</span><span>节点</span>
     </button>
-    <button id="tabletAddChildBtn" type="button" title="为当前节点添加子节点">
+    <button id="tabletAddChildBtn" type="button" title="添加子节点">
       <span class="tablet-action-icon">↳</span><span>子节点</span>
     </button>
-    <button id="tabletEditBtn" type="button" title="编辑当前节点或文字">
+    <button id="tabletEditBtn" type="button" title="编辑当前节点">
       <span class="tablet-action-icon">✎</span><span>编辑</span>
     </button>
     <button id="tabletConnectBtn" type="button" title="连接两个节点">
       <span class="tablet-action-icon">⌁</span><span>连接</span>
     </button>
-    <button id="tabletMoreBtn" type="button" title="更多平板操作">
+    <button id="tabletMoreBtn" type="button" title="更多导图操作">
       <span class="tablet-action-icon">•••</span><span>更多</span>
     </button>
-    <button id="tabletFullscreenBtn" type="button" title="进入全屏">
-      <span class="tablet-action-icon">⛶</span><span>全屏</span>
+    <button id="tabletPureBtn" type="button" title="进入或退出纯模式">
+      <span class="tablet-action-icon">◫</span><span>纯模式</span>
+    </button>
+    <button id="tabletDockCollapseBtn" type="button" title="折叠工具栏">
+      <span class="tablet-action-icon">−</span><span>折叠</span>
     </button>
   </div>
 
@@ -3703,23 +4010,13 @@
       <button id="tabletRelationBtn" type="button">关系标注</button>
       <button id="tabletDeleteBtn" class="danger" type="button">删除选中</button>
 
-      <button id="tabletPenBtn" type="button">✎ 钢笔</button>
-      <button id="tabletWatercolorBtn" type="button">▰ 水彩</button>
-      <button id="tabletEraserBtn" type="button">
-        <svg class="eraser-svg-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7.2 18.4 3.9 15.1a2.35 2.35 0 0 1 0-3.3l7.3-7.3a2.35 2.35 0 0 1 3.3 0l5 5a2.35 2.35 0 0 1 0 3.3l-5.6 5.6H7.2Z"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          <path d="m9.1 6.5 8.4 8.4M7.2 18.4h12.1"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-        橡皮
-      </button>
       <button id="tabletFrameBtn" type="button">▭ 矩形框</button>
-
       <button id="tabletLineBtn" type="button">╱ 直线</button>
       <button id="tabletFitBtn" type="button">适应画布</button>
       <button id="tabletSidebarBtn" type="button">笔记库</button>
-      <button id="tabletPureBtn" type="button">切换纯模式</button>
+
+      <button id="tabletImportDocumentBtn" type="button">PDF / Office</button>
+      <button id="tabletFullscreenBtn" type="button">⛶ 全屏</button>
     </div>
   </div>
 
@@ -3840,6 +4137,7 @@
       const addFrameBtn = document.getElementById("addFrameBtn");
       const addLineBtn = document.getElementById("addLineBtn");
       const freeImageInput = document.getElementById("freeImageInput");
+      const documentFileInput = document.getElementById("documentFileInput");
       const connectBtn = document.getElementById("connectBtn");
       const relationLabelBtn = document.getElementById("relationLabelBtn");
       const editTextBtn = document.getElementById("editTextBtn");
@@ -3887,6 +4185,8 @@
       const fullscreenBtn = document.getElementById("fullscreenBtn");
 
       const tabletActionDock = document.getElementById("tabletActionDock");
+      const tabletDockDrag = document.getElementById("tabletDockDrag");
+      const tabletDockCollapseBtn = document.getElementById("tabletDockCollapseBtn");
       const tabletPanBtn = document.getElementById("tabletPanBtn");
       const tabletSelectBtn = document.getElementById("tabletSelectBtn");
       const tabletAddNodeBtn = document.getElementById("tabletAddNodeBtn");
@@ -3901,14 +4201,15 @@
       const tabletFreeTextBtn = document.getElementById("tabletFreeTextBtn");
       const tabletRelationBtn = document.getElementById("tabletRelationBtn");
       const tabletDeleteBtn = document.getElementById("tabletDeleteBtn");
-      const tabletPenBtn = document.getElementById("tabletPenBtn");
-      const tabletWatercolorBtn = document.getElementById("tabletWatercolorBtn");
-      const tabletEraserBtn = document.getElementById("tabletEraserBtn");
+      const tabletPenBtn = null;
+      const tabletWatercolorBtn = null;
+      const tabletEraserBtn = null;
       const tabletFrameBtn = document.getElementById("tabletFrameBtn");
       const tabletLineBtn = document.getElementById("tabletLineBtn");
       const tabletFitBtn = document.getElementById("tabletFitBtn");
       const tabletSidebarBtn = document.getElementById("tabletSidebarBtn");
       const tabletPureBtn = document.getElementById("tabletPureBtn");
+      const tabletImportDocumentBtn = document.getElementById("tabletImportDocumentBtn");
 
       const fullscreenGuideModal = document.getElementById("fullscreenGuideModal");
       const fullscreenGuideText = document.getElementById("fullscreenGuideText");
@@ -4007,6 +4308,8 @@
       let touchEventPanState = null;
       let drawingTouchPanState = null;
       let tabletPanMode = false;
+      let tabletToolbarDragState = null;
+      let tabletToolbarSettings = null;
       let currentStrokeRenderedCount = 0;
       let currentStrokeRenderFrame = null;
       let drawingCanvasFrame = null;
@@ -4018,6 +4321,13 @@
       const SINGLE_FINGER_PAN_ARM_DELAY_MS = 90;
       const SINGLE_FINGER_PAN_MAX_CONTACT = 48;
       const SINGLE_FINGER_PAN_CANCEL_CONTACT = 64;
+      const PDFJS_MODULE_URL =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+      const PDFJS_WORKER_URL =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+      let pdfJsPromise = null;
+      const pdfDocumentCache = new Map();
+      let pdfRenderSchedule = null;
       let lastCanvasPointer = null;
       let toastTimer = null;
       const DRAG_START_DISTANCE = 7;
@@ -4069,6 +4379,7 @@
             })
           ],
           freeItems: [],
+          assets: {},
           drawings: [],
           selectedFreeId: null,
           selectedId: null,
@@ -5079,7 +5390,9 @@
 
 
       function normalizeFreeItem(raw) {
-        const supportedTypes = new Set(["text", "image", "frame", "line", "stamp"]);
+        const supportedTypes = new Set([
+          "text", "image", "frame", "line", "stamp", "pdfPage", "attachment"
+        ]);
         const type = supportedTypes.has(raw?.type) ? raw.type : "text";
 
         const defaultWidth =
@@ -5087,6 +5400,8 @@
           type === "frame" ? 360 :
           type === "line" ? 320 :
           type === "stamp" ? 54 :
+          type === "pdfPage" ? 720 :
+          type === "attachment" ? 380 :
           240;
 
         const defaultHeight =
@@ -5094,6 +5409,8 @@
           type === "frame" ? 220 :
           type === "line" ? 28 :
           type === "stamp" ? 54 :
+          type === "pdfPage" ? 980 :
+          type === "attachment" ? 170 :
           110;
 
         return {
@@ -5113,7 +5430,12 @@
           rotation: Number.isFinite(raw?.rotation) ? raw.rotation : 0,
           strokeWidth: Number.isFinite(raw?.strokeWidth)
             ? raw.strokeWidth
-            : (type === "frame" ? 3 : type === "line" ? 4 : 0)
+            : (type === "frame" ? 3 : type === "line" ? 4 : 0),
+          assetId: typeof raw?.assetId === "string" ? raw.assetId : null,
+          pageNumber: Number.isFinite(raw?.pageNumber) ? raw.pageNumber : 1,
+          fileName: typeof raw?.fileName === "string" ? raw.fileName : "",
+          fileType: typeof raw?.fileType === "string" ? raw.fileType : "",
+          fileSize: Number.isFinite(raw?.fileSize) ? raw.fileSize : 0
         };
       }
 
@@ -5143,6 +5465,10 @@
       }
 
       function ensureStateCollections(targetState) {
+        targetState.assets =
+          targetState.assets && typeof targetState.assets === "object"
+            ? targetState.assets
+            : {};
         targetState.freeItems = Array.isArray(targetState.freeItems)
           ? targetState.freeItems.map(normalizeFreeItem)
           : [];
@@ -5462,6 +5788,7 @@
         zoomLabel.textContent = `${Math.round(state.scale * 100)}%`;
         scheduleDrawingCanvasRender();
         scheduleLaserRender();
+        scheduleVisiblePdfPageRender();
       }
 
       function zoomAt(clientX, clientY, nextScale) {
@@ -6241,6 +6568,154 @@
         return el;
       }
 
+      function formatFileSize(bytes) {
+        const value = Number(bytes) || 0;
+        if (value < 1024) return `${value} B`;
+        if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
+        return `${(value / 1024 ** 2).toFixed(1)} MB`;
+      }
+
+      async function ensurePdfJs() {
+        if (!pdfJsPromise) {
+          pdfJsPromise = import(PDFJS_MODULE_URL).then(module => {
+            module.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+            return module;
+          });
+        }
+        return pdfJsPromise;
+      }
+
+      function dataUrlToUint8Array(dataUrl) {
+        const comma = String(dataUrl || "").indexOf(",");
+        if (comma < 0) throw new Error("PDF 数据格式无效");
+        const binary = atob(dataUrl.slice(comma + 1));
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        return bytes;
+      }
+
+      async function getPdfDocument(assetId) {
+        if (pdfDocumentCache.has(assetId)) {
+          return pdfDocumentCache.get(assetId);
+        }
+
+        const asset = state.assets?.[assetId];
+        if (!asset?.dataUrl) throw new Error("PDF 文件数据已丢失");
+
+        const pdfjs = await ensurePdfJs();
+        const promise = pdfjs
+          .getDocument({ data: dataUrlToUint8Array(asset.dataUrl) })
+          .promise;
+        pdfDocumentCache.set(assetId, promise);
+        return promise;
+      }
+
+      function worldViewportBounds(margin = 700) {
+        const width = workspace.clientWidth || 1;
+        const height = workspace.clientHeight || 1;
+        return {
+          left: (-state.panX - margin) / state.scale,
+          top: (-state.panY - margin) / state.scale,
+          right: (width - state.panX + margin) / state.scale,
+          bottom: (height - state.panY + margin) / state.scale
+        };
+      }
+
+      function itemIntersectsWorldViewport(item, margin = 700) {
+        const bounds = worldViewportBounds(margin);
+        return !(
+          item.x + item.width < bounds.left ||
+          item.x > bounds.right ||
+          item.y + item.height < bounds.top ||
+          item.y > bounds.bottom
+        );
+      }
+
+      async function renderPdfPageItem(item, el) {
+        if (!itemIntersectsWorldViewport(item)) return;
+
+        const canvas = el.querySelector(".pdf-page-canvas");
+        const loading = el.querySelector(".pdf-page-loading");
+        if (!canvas || !loading) return;
+
+        const renderKey = [
+          item.assetId,
+          item.pageNumber,
+          Math.round(item.width),
+          Math.round(item.height)
+        ].join(":");
+
+        if (canvas.dataset.renderKey === renderKey) return;
+        canvas.dataset.renderKey = renderKey;
+        loading.hidden = false;
+        loading.textContent = "正在渲染 PDF 页面…";
+
+        try {
+          const pdf = await getPdfDocument(item.assetId);
+          const page = await pdf.getPage(item.pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+
+          const contentWidth = Math.max(120, item.width - 12);
+          const contentHeight = Math.max(120, item.height - 42);
+          const scale = Math.min(
+            contentWidth / baseViewport.width,
+            contentHeight / baseViewport.height
+          );
+          const viewport = page.getViewport({ scale });
+          const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+
+          canvas.width = Math.max(1, Math.floor(viewport.width * dpr));
+          canvas.height = Math.max(1, Math.floor(viewport.height * dpr));
+          canvas.style.width = `${viewport.width}px`;
+          canvas.style.height = `${viewport.height}px`;
+
+          const context = canvas.getContext("2d", { alpha: false });
+          context.setTransform(dpr, 0, 0, dpr, 0, 0);
+          context.fillStyle = "#ffffff";
+          context.fillRect(0, 0, viewport.width, viewport.height);
+
+          await page.render({
+            canvasContext: context,
+            viewport
+          }).promise;
+
+          loading.hidden = true;
+        } catch (error) {
+          console.error("PDF 页面渲染失败", error);
+          loading.hidden = false;
+          loading.textContent =
+            "PDF 渲染失败。首次使用需要联网加载 PDF.js。";
+          canvas.dataset.renderKey = "";
+        }
+      }
+
+      function scheduleVisiblePdfPageRender() {
+        if (pdfRenderSchedule) return;
+        pdfRenderSchedule = requestAnimationFrame(() => {
+          pdfRenderSchedule = null;
+          for (const item of state.freeItems || []) {
+            if (item.type !== "pdfPage") continue;
+            const el = freeLayer.querySelector(
+              `.free-item[data-id="${CSS.escape(item.id)}"]`
+            );
+            if (el) renderPdfPageItem(item, el);
+          }
+        });
+      }
+
+      function downloadAsset(assetId) {
+        const asset = state.assets?.[assetId];
+        if (!asset?.dataUrl) return;
+        const link = document.createElement("a");
+        link.href = asset.dataUrl;
+        link.download = asset.name || "document";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
       function renderFreeItems() {
         state.freeItems = Array.isArray(state.freeItems) ? state.freeItems : [];
         const existing = new Map(
@@ -6299,6 +6774,23 @@
             stamp.textContent = item.text || "⭐";
             stamp.style.color = item.color || "#f59e0b";
             stamp.style.fontSize = `${item.fontSize || 36}px`;
+          } else if (item.type === "pdfPage") {
+            const asset = state.assets?.[item.assetId];
+            const name = el.querySelector(".pdf-page-name");
+            const page = el.querySelector(".pdf-page-number");
+            if (name) name.textContent = asset?.name || item.fileName || "PDF";
+            if (page) page.textContent = `第 ${item.pageNumber} 页`;
+            renderPdfPageItem(item, el);
+          } else if (item.type === "attachment") {
+            const asset = state.assets?.[item.assetId];
+            const name = el.querySelector(".attachment-name");
+            const meta = el.querySelector(".attachment-meta");
+            const icon = el.querySelector(".attachment-icon");
+            if (name) name.textContent = asset?.name || item.fileName || "附件";
+            if (meta) {
+              meta.textContent = `${(asset?.extension || item.fileType || "FILE").toUpperCase()} · ${formatFileSize(asset?.size || item.fileSize)}`;
+            }
+            if (icon) icon.textContent = (asset?.extension || item.fileType || "FILE").replace(".", "").toUpperCase().slice(0, 5);
           }
         }
 
@@ -6312,6 +6804,8 @@
           item.type === "frame" ? "free-frame-item" :
           item.type === "line" ? "free-line-item" :
           item.type === "stamp" ? "free-stamp-item" :
+          item.type === "pdfPage" ? "free-pdf-page-item" :
+          item.type === "attachment" ? "free-attachment-item" :
           "";
 
         el.className = `free-item scene-object ${typeClass}`;
@@ -6341,6 +6835,32 @@
             <div class="free-stamp"></div>
             <div class="free-resize-handle"></div>
           `;
+        } else if (item.type === "pdfPage") {
+          el.innerHTML = `
+            <div class="pdf-page-header">
+              <strong class="pdf-page-name">PDF</strong>
+              <span class="pdf-page-number">第 1 页</span>
+            </div>
+            <div class="pdf-page-canvas-wrap">
+              <canvas class="pdf-page-canvas"></canvas>
+            </div>
+            <div class="pdf-page-loading">准备渲染 PDF 页面…</div>
+            <div class="free-resize-handle"></div>
+          `;
+        } else if (item.type === "attachment") {
+          el.innerHTML = `
+            <div class="attachment-card">
+              <div class="attachment-icon">FILE</div>
+              <div class="attachment-name">附件</div>
+              <div class="attachment-meta"></div>
+              <div class="attachment-note">
+                当前纯前端版本无法可靠还原本地 Word / PowerPoint 版式。
+                请下载或先转换为 PDF，再导入进行逐页批注。
+              </div>
+              <button class="attachment-download" type="button">下载原文件</button>
+            </div>
+            <div class="free-resize-handle"></div>
+          `;
         } else {
           el.innerHTML = `
             <div class="free-text" contenteditable="false" data-editing="false" spellcheck="false"></div>
@@ -6352,6 +6872,7 @@
         el.addEventListener("pointerdown", event => {
           if (event.button !== 0) return;
           if (event.target.closest(".free-resize-handle")) return;
+          if (event.target.closest(".attachment-download")) return;
           if (event.target.closest(".inline-editor, .editing-host")) return;
           event.stopPropagation();
 
@@ -6415,6 +6936,15 @@
         el.addEventListener("click", event => {
           event.stopPropagation();
         });
+
+        if (item.type === "attachment") {
+          const downloadButton = el.querySelector(".attachment-download");
+          downloadButton?.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            downloadAsset(item.assetId);
+          });
+        }
 
         if (item.type === "text") {
           const content = el.querySelector(".free-text");
@@ -6728,12 +7258,12 @@
           "active",
           !tabletPanMode && activeCanvasTool === "select"
         );
-        tabletPenBtn.classList.toggle("active", activeCanvasTool === "pen");
-        tabletWatercolorBtn.classList.toggle(
+        tabletPenBtn?.classList.toggle("active", activeCanvasTool === "pen");
+        tabletWatercolorBtn?.classList.toggle(
           "active",
           activeCanvasTool === "watercolor"
         );
-        tabletEraserBtn.classList.toggle(
+        tabletEraserBtn?.classList.toggle(
           "active",
           activeCanvasTool === "eraser"
         );
@@ -7490,7 +8020,9 @@
           event.pointerType === "touch" &&
           ensureDrawingSettings().singleFingerPan
         ) {
-          return beginDrawingTouchPan(event);
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
         }
 
         if (!canUsePointerForCanvasTool(event)) {
@@ -7502,6 +8034,11 @@
 
         event.preventDefault();
         event.stopPropagation();
+
+        if (event.pointerType === "pen") {
+          document.getSelection()?.removeAllRanges();
+          document.body.classList.add("inking-active");
+        }
 
         const point = screenToWorld(event.clientX, event.clientY);
 
@@ -7592,6 +8129,16 @@
 
       function handleCanvasToolPointerMove(event) {
         if (moveDrawingTouchPan(event)) return true;
+
+        if (
+          event.pointerType === "touch" &&
+          activeCanvasTool !== "select" &&
+          ensureDrawingSettings().singleFingerPan
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
 
         if (activeCanvasTool === "select") return false;
 
@@ -7685,6 +8232,7 @@
 
           currentStroke = null;
           currentStrokeRenderedCount = 0;
+          document.body.classList.remove("inking-active");
           autosave();
           return true;
         }
@@ -7692,6 +8240,7 @@
         if (laserStroke && laserStroke.pointerId === event.pointerId) {
           event.preventDefault();
           event.stopPropagation();
+          document.body.classList.remove("inking-active");
           laserClearTimer = setTimeout(() => {
             laserStroke = null;
             renderLaserStroke();
@@ -7709,6 +8258,7 @@
           eraserChanged = false;
           eraserPointerId = null;
           eraserPreviousPoint = null;
+          document.body.classList.remove("inking-active");
           return true;
         }
 
@@ -8345,10 +8895,12 @@
       }
 
       workspace.addEventListener("touchstart", event => {
-        if ("PointerEvent" in window) return;
+        const drawingMode = activeCanvasTool !== "select";
+        const settings = ensureDrawingSettings();
+
         if (
-          activeCanvasTool === "select" ||
-          !ensureDrawingSettings().singleFingerPan ||
+          !drawingMode ||
+          !settings.singleFingerPan ||
           event.touches.length !== 1
         ) {
           return;
@@ -8357,15 +8909,17 @@
         const touch = event.touches[0];
         if (touchLooksLikePalm(touch)) {
           event.preventDefault();
+          event.stopPropagation();
           return;
         }
 
         touchEventPanState = {
           identifier: touch.identifier,
-          startClientX: touch.clientX,
-          startClientY: touch.clientY,
-          startPanX: state.panX,
-          startPanY: state.panY,
+          initialClientX: touch.clientX,
+          initialClientY: touch.clientY,
+          lastClientX: touch.clientX,
+          lastClientY: touch.clientY,
+          startedAt: performance.now(),
           started: false
         };
 
@@ -8374,27 +8928,54 @@
       }, { capture: true, passive: false });
 
       workspace.addEventListener("touchmove", event => {
-        if ("PointerEvent" in window) return;
         if (!touchEventPanState) return;
 
         const touch = findTouchByIdentifier(
           event.touches,
           touchEventPanState.identifier
         );
+
         if (!touch) return;
 
-        const dx = touch.clientX - touchEventPanState.startClientX;
-        const dy = touch.clientY - touchEventPanState.startClientY;
+        const contactRadius = Math.max(
+          Number(touch.radiusX) || 0,
+          Number(touch.radiusY) || 0
+        );
 
-        if (!touchEventPanState.started && Math.hypot(dx, dy) < 4) {
+        if (contactRadius > 48) {
+          touchEventPanState = null;
+          workspace.classList.remove("panning");
           event.preventDefault();
           event.stopPropagation();
           return;
         }
 
-        touchEventPanState.started = true;
-        state.panX = touchEventPanState.startPanX + dx;
-        state.panY = touchEventPanState.startPanY + dy;
+        if (!touchEventPanState.started) {
+          const dx = touch.clientX - touchEventPanState.initialClientX;
+          const dy = touch.clientY - touchEventPanState.initialClientY;
+          const distance = Math.hypot(dx, dy);
+          const elapsed = performance.now() - touchEventPanState.startedAt;
+
+          if (distance < 9 || elapsed < 35) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
+          touchEventPanState.started = true;
+          touchEventPanState.lastClientX = touch.clientX;
+          touchEventPanState.lastClientY = touch.clientY;
+          workspace.classList.add("panning");
+
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        state.panX += touch.clientX - touchEventPanState.lastClientX;
+        state.panY += touch.clientY - touchEventPanState.lastClientY;
+        touchEventPanState.lastClientX = touch.clientX;
+        touchEventPanState.lastClientY = touch.clientY;
         applyTransform();
 
         event.preventDefault();
@@ -8402,7 +8983,6 @@
       }, { capture: true, passive: false });
 
       const finishTouchEventPan = event => {
-        if ("PointerEvent" in window) return;
         if (!touchEventPanState) return;
 
         const remaining = findTouchByIdentifier(
@@ -8413,6 +8993,7 @@
 
         const changed = touchEventPanState.started;
         touchEventPanState = null;
+        workspace.classList.remove("panning");
         if (changed) autosave();
 
         event.preventDefault();
@@ -8430,6 +9011,27 @@
         { capture: true, passive: false }
       );
 
+      workspace.addEventListener("selectstart", event => {
+        if (activeCanvasTool !== "select" && !event.target.closest("[contenteditable='true']")) {
+          event.preventDefault();
+        }
+      }, true);
+
+      workspace.addEventListener("dragstart", event => {
+        if (activeCanvasTool !== "select") {
+          event.preventDefault();
+        }
+      }, true);
+
+      workspace.addEventListener("contextmenu", event => {
+        if (
+          activeCanvasTool !== "select" &&
+          (event.pointerType === "pen" || event.pointerType === "touch")
+        ) {
+          event.preventDefault();
+        }
+      }, true);
+
       workspace.addEventListener("pointerdown", event => {
         handleCanvasToolPointerDown(event);
       }, true);
@@ -8444,6 +9046,39 @@
 
       workspace.addEventListener("pointercancel", event => {
         if (toolDraft || currentStroke || laserStroke || activeCanvasTool === "eraser") {
+          releaseCanvasToolPointer(event);
+        }
+      }, true);
+
+      window.addEventListener("pointerup", event => {
+        if (
+          toolDraft?.pointerId === event.pointerId ||
+          currentStroke?.pointerId === event.pointerId ||
+          laserStroke?.pointerId === event.pointerId ||
+          eraserPointerId === event.pointerId
+        ) {
+          releaseCanvasToolPointer(event);
+        }
+      }, true);
+
+      window.addEventListener("pointercancel", event => {
+        if (
+          toolDraft?.pointerId === event.pointerId ||
+          currentStroke?.pointerId === event.pointerId ||
+          laserStroke?.pointerId === event.pointerId ||
+          eraserPointerId === event.pointerId
+        ) {
+          releaseCanvasToolPointer(event);
+        }
+        document.body.classList.remove("inking-active");
+      }, true);
+
+      workspace.addEventListener("lostpointercapture", event => {
+        if (
+          currentStroke?.pointerId === event.pointerId ||
+          laserStroke?.pointerId === event.pointerId ||
+          eraserPointerId === event.pointerId
+        ) {
           releaseCanvasToolPointer(event);
         }
       }, true);
@@ -8742,10 +9377,78 @@
         autosave();
       }, { passive: false });
 
+      function ensureTabletMindmapToolbarSettings() {
+        library.settings = library.settings || {};
+        const current = library.settings.tabletMindmapToolbar || {};
+        const defaultX = 18;
+        const defaultY = 118;
+
+        tabletToolbarSettings = {
+          x: Number.isFinite(current.x) ? current.x : defaultX,
+          y: Number.isFinite(current.y) ? current.y : defaultY,
+          collapsed: Boolean(current.collapsed)
+        };
+
+        library.settings.tabletMindmapToolbar = tabletToolbarSettings;
+        return tabletToolbarSettings;
+      }
+
+      function clampTabletToolbarPosition() {
+        const settings = ensureTabletMindmapToolbarSettings();
+        const width = tabletActionDock.offsetWidth || 340;
+        const height = tabletActionDock.offsetHeight || 52;
+        const maxX = Math.max(8, window.innerWidth - width - 8);
+        const maxY = Math.max(8, window.innerHeight - height - 8);
+        settings.x = Math.max(8, Math.min(maxX, settings.x));
+        settings.y = Math.max(8, Math.min(maxY, settings.y));
+        tabletActionDock.style.left = `${settings.x}px`;
+        tabletActionDock.style.top = `${settings.y}px`;
+      }
+
+      function positionTabletMorePanel() {
+        if (!tabletMorePanel.classList.contains("visible")) return;
+
+        const toolbarRect = tabletActionDock.getBoundingClientRect();
+        const panelWidth = Math.min(420, window.innerWidth - 20);
+        const estimatedHeight = Math.min(
+          tabletMorePanel.scrollHeight || 320,
+          window.innerHeight - 20
+        );
+
+        let left = toolbarRect.left;
+        let top = toolbarRect.bottom + 8;
+
+        if (top + estimatedHeight > window.innerHeight - 8) {
+          top = toolbarRect.top - estimatedHeight - 8;
+        }
+
+        if (left + panelWidth > window.innerWidth - 8) {
+          left = window.innerWidth - panelWidth - 8;
+        }
+
+        tabletMorePanel.style.left = `${Math.max(8, left)}px`;
+        tabletMorePanel.style.top = `${Math.max(8, top)}px`;
+        tabletMorePanel.style.width = `${panelWidth}px`;
+      }
+
+      function renderTabletMindmapToolbar() {
+        const settings = ensureTabletMindmapToolbarSettings();
+        tabletActionDock.classList.toggle("collapsed", settings.collapsed);
+        tabletDockCollapseBtn.querySelector(".tablet-action-icon").textContent =
+          settings.collapsed ? "+" : "−";
+        tabletDockCollapseBtn.querySelector("span:last-child").textContent =
+          settings.collapsed ? "展开" : "折叠";
+        requestAnimationFrame(() => {
+          clampTabletToolbarPosition();
+          positionTabletMorePanel();
+        });
+      }
+
       function setTabletMoreVisible(visible) {
         tabletMorePanel.classList.toggle("visible", Boolean(visible));
         tabletMorePanel.setAttribute("aria-hidden", visible ? "false" : "true");
         tabletMoreBtn.classList.toggle("active", Boolean(visible));
+        if (visible) requestAnimationFrame(positionTabletMorePanel);
       }
 
       function setTabletPanMode(enabled) {
@@ -8820,6 +9523,187 @@
       addFrameBtn.addEventListener("click", () => setActiveCanvasTool("frame"));
       addLineBtn.addEventListener("click", () => setActiveCanvasTool("line"));
 
+      function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function parsePageRange(input, pageCount) {
+        const normalized = String(input || "").trim().toLowerCase();
+        if (!normalized) return [];
+        if (normalized === "all" || normalized === "全部") {
+          return Array.from({ length: pageCount }, (_, index) => index + 1);
+        }
+
+        const result = new Set();
+        for (const part of normalized.split(/[,，\s]+/)) {
+          if (!part) continue;
+          const range = part.match(/^(\d+)\s*[-~到]\s*(\d+)$/);
+          if (range) {
+            const start = Math.max(1, Math.min(pageCount, Number(range[1])));
+            const end = Math.max(1, Math.min(pageCount, Number(range[2])));
+            const lower = Math.min(start, end);
+            const upper = Math.max(start, end);
+            for (let value = lower; value <= upper; value += 1) {
+              result.add(value);
+            }
+            continue;
+          }
+
+          const single = Number(part);
+          if (Number.isInteger(single) && single >= 1 && single <= pageCount) {
+            result.add(single);
+          }
+        }
+
+        return [...result].sort((a, b) => a - b);
+      }
+
+      async function importPdfFile(file) {
+        statusEl.textContent = "正在读取 PDF…";
+        const dataUrl = await readFileAsDataUrl(file);
+        const pdfjs = await ensurePdfJs();
+        const bytes = dataUrlToUint8Array(dataUrl);
+        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+
+        const defaultEnd = Math.min(20, pdf.numPages);
+        const rangeInput = window.prompt(
+          `PDF 共 ${pdf.numPages} 页。请输入要展开的页码，例如 1-20、1,3,5 或 all。\n` +
+          `电子书建议分批导入，避免一次创建过多页面。`,
+          `1-${defaultEnd}`
+        );
+
+        if (rangeInput === null) return;
+
+        const pages = parsePageRange(rangeInput, pdf.numPages);
+        if (!pages.length) throw new Error("没有可导入的有效页码");
+
+        const assetId = uid("asset");
+        state.assets = state.assets || {};
+        state.assets[assetId] = {
+          id: assetId,
+          type: "pdf",
+          name: file.name,
+          mime: file.type || "application/pdf",
+          size: file.size,
+          dataUrl,
+          pageCount: pdf.numPages
+        };
+        pdfDocumentCache.set(assetId, Promise.resolve(pdf));
+
+        const rect = workspace.getBoundingClientRect();
+        const center = screenToWorld(
+          rect.left + workspace.clientWidth / 2,
+          rect.top + 90
+        );
+
+        const pageWidth = 720;
+        let y = center.y;
+        const createdIds = [];
+
+        for (const pageNumber of pages) {
+          const page = await pdf.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1 });
+          const pageHeight = pageWidth * (viewport.height / viewport.width) + 34;
+
+          const item = normalizeFreeItem({
+            id: uid("free"),
+            type: "pdfPage",
+            x: center.x - pageWidth / 2,
+            y,
+            width: pageWidth,
+            height: pageHeight,
+            assetId,
+            pageNumber,
+            fileName: file.name,
+            fileType: "pdf",
+            fileSize: file.size
+          });
+
+          state.freeItems.push(item);
+          createdIds.push(item.id);
+          y += pageHeight + 42;
+        }
+
+        clearSelection();
+        for (const id of createdIds) selectedFreeIds.add(id);
+        updatePrimarySelection("free", createdIds[0]);
+        renderFreeItems();
+        refreshSelectionRendering();
+        autosave();
+        statusEl.textContent =
+          `已展开 ${pages.length} 个 PDF 页面，可直接用笔在页面上批注`;
+      }
+
+      async function importOfficeAttachment(file) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const extension =
+          "." + (file.name.split(".").pop() || "file").toLowerCase();
+        const assetId = uid("asset");
+        state.assets = state.assets || {};
+        state.assets[assetId] = {
+          id: assetId,
+          type: "office",
+          name: file.name,
+          mime: file.type || "application/octet-stream",
+          extension,
+          size: file.size,
+          dataUrl
+        };
+
+        const rect = workspace.getBoundingClientRect();
+        const center = screenToWorld(
+          rect.left + workspace.clientWidth / 2,
+          rect.top + workspace.clientHeight / 2
+        );
+
+        const item = normalizeFreeItem({
+          id: uid("free"),
+          type: "attachment",
+          x: center.x - 190,
+          y: center.y - 85,
+          width: 380,
+          height: 170,
+          assetId,
+          fileName: file.name,
+          fileType: extension,
+          fileSize: file.size
+        });
+
+        state.freeItems.push(item);
+        setSelectedFree(item.id);
+        renderFreeItems();
+        autosave();
+        statusEl.textContent =
+          "Office 文件已作为附件保存。转换为 PDF 后可逐页展开批注。";
+      }
+
+      async function importDocumentFile(file) {
+        if (!file) return;
+
+        const extension = "." + (file.name.split(".").pop() || "").toLowerCase();
+
+        try {
+          if (extension === ".pdf" || file.type === "application/pdf") {
+            await importPdfFile(file);
+          } else if (
+            [".doc", ".docx", ".ppt", ".pptx"].includes(extension)
+          ) {
+            await importOfficeAttachment(file);
+          } else {
+            throw new Error("目前只支持 PDF、DOC/DOCX、PPT/PPTX");
+          }
+        } catch (error) {
+          console.error(error);
+          alert(`文档导入失败：${error.message || "未知错误"}`);
+          statusEl.textContent = "文档导入失败";
+        }
+      }
+
       freeImageInput.addEventListener("change", () => {
         const file = freeImageInput.files?.[0];
         if (!file) return;
@@ -8834,6 +9718,12 @@
         };
         reader.readAsDataURL(file);
         freeImageInput.value = "";
+      });
+
+      documentFileInput.addEventListener("change", async () => {
+        const file = documentFileInput.files?.[0];
+        documentFileInput.value = "";
+        if (file) await importDocumentFile(file);
       });
 
       selectBranchBtn.addEventListener("click", selectCurrentBranch);
@@ -9412,8 +10302,18 @@
       fitBtn.addEventListener("click", fitView);
       fullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
       tabletFullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
-      document.addEventListener("fullscreenchange", updateFullscreenButtons);
-      document.addEventListener("webkitfullscreenchange", updateFullscreenButtons);
+      tabletImportDocumentBtn.addEventListener("click", () => {
+        setTabletMoreVisible(false);
+        documentFileInput.click();
+      });
+      document.addEventListener("fullscreenchange", () => {
+        updateFullscreenButtons();
+        requestAnimationFrame(recoverCanvasAfterViewportChange);
+      });
+      document.addEventListener("webkitfullscreenchange", () => {
+        updateFullscreenButtons();
+        requestAnimationFrame(recoverCanvasAfterViewportChange);
+      });
 
       closeFullscreenGuideBtn.addEventListener("click", () => {
         setFullscreenGuideVisible(false);
@@ -9425,6 +10325,71 @@
         if (event.target === fullscreenGuideModal) {
           setFullscreenGuideVisible(false);
         }
+      });
+
+      tabletDockDrag.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const settings = ensureTabletMindmapToolbarSettings();
+        tabletToolbarDragState = {
+          pointerId: event.pointerId,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startX: settings.x,
+          startY: settings.y
+        };
+        tabletActionDock.classList.add("dragging");
+        try {
+          tabletActionDock.setPointerCapture(event.pointerId);
+        } catch {
+          // 不影响拖动。
+        }
+      });
+
+      tabletActionDock.addEventListener("pointermove", event => {
+        if (
+          !tabletToolbarDragState ||
+          tabletToolbarDragState.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        const settings = ensureTabletMindmapToolbarSettings();
+        settings.x =
+          tabletToolbarDragState.startX +
+          event.clientX -
+          tabletToolbarDragState.startClientX;
+        settings.y =
+          tabletToolbarDragState.startY +
+          event.clientY -
+          tabletToolbarDragState.startClientY;
+        clampTabletToolbarPosition();
+        positionTabletMorePanel();
+      });
+
+      const finishTabletToolbarDrag = event => {
+        if (
+          !tabletToolbarDragState ||
+          tabletToolbarDragState.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        tabletToolbarDragState = null;
+        tabletActionDock.classList.remove("dragging");
+        persistLibrary();
+      };
+
+      tabletActionDock.addEventListener("pointerup", finishTabletToolbarDrag);
+      tabletActionDock.addEventListener("pointercancel", finishTabletToolbarDrag);
+
+      tabletDockCollapseBtn.addEventListener("click", event => {
+        event.stopPropagation();
+        const settings = ensureTabletMindmapToolbarSettings();
+        settings.collapsed = !settings.collapsed;
+        setTabletMoreVisible(false);
+        persistLibrary();
+        renderTabletMindmapToolbar();
       });
 
       tabletPanBtn.addEventListener("click", () => {
@@ -9483,21 +10448,6 @@
       });
       tabletDeleteBtn.addEventListener("click", () => {
         deleteSelection();
-        closeTabletPanels();
-      });
-      tabletPenBtn.addEventListener("click", () => {
-        setTabletPanMode(false);
-        setActiveCanvasTool("pen");
-        closeTabletPanels();
-      });
-      tabletWatercolorBtn.addEventListener("click", () => {
-        setTabletPanMode(false);
-        setActiveCanvasTool("watercolor");
-        closeTabletPanels();
-      });
-      tabletEraserBtn.addEventListener("click", () => {
-        setTabletPanMode(false);
-        setActiveCanvasTool("eraser");
         closeTabletPanels();
       });
       tabletFrameBtn.addEventListener("click", () => {
@@ -9839,11 +10789,27 @@
         if (!branchPanel.contains(event.target) && !event.target.closest(".branch-btn")) closeBranchPanel();
       });
 
-      window.addEventListener("resize", () => {
+      function recoverCanvasAfterViewportChange() {
+        cancelDrawingTouchPan();
+        touchEventPanState = null;
+        panState = null;
+        workspace.classList.remove("panning");
+        document.body.classList.remove("inking-active");
         applyTransform();
         renderEdges();
         renderPureTools();
-      });
+        renderTabletMindmapToolbar();
+      }
+
+      window.addEventListener("resize", recoverCanvasAfterViewportChange);
+      window.visualViewport?.addEventListener(
+        "resize",
+        recoverCanvasAfterViewportChange
+      );
+      window.visualViewport?.addEventListener(
+        "scroll",
+        recoverCanvasAfterViewportChange
+      );
 
       document.addEventListener("pointermove", event => {
         if (!pureModeEnabled) return;
@@ -9944,14 +10910,7 @@
       }
 
       function pureToolbarBottomReserve() {
-        const coarse = window.matchMedia?.("(pointer: coarse)").matches;
-        if (!coarse || !document.body.classList.contains("pure-mode")) {
-          return 8;
-        }
-
-        const dockHeight =
-          tabletActionDock?.getBoundingClientRect().height || 62;
-        return dockHeight + 18;
+        return 8;
       }
 
       function renderPureTools() {
@@ -10350,6 +11309,7 @@
       updateHistoryButtons();
       updateFullscreenButtons();
       setTabletPanMode(false);
+      renderTabletMindmapToolbar();
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "hidden") return;

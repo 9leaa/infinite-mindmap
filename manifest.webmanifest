@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V15.3",
+  "name": "无限画布思维导图 V15.4",
   "short_name": "无限画布",
-  "description": "支持思维导图、自由文字、图片、富文本、Apple Pencil 手写与本地笔记库的无限画布。",
+  "description": "支持 Apple Pencil、双悬浮工具栏、PDF 逐页展开和本地 IndexedDB 的无限画布。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
