@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · 性能与界面优化版</title>
+  <title>无限画布思维导图 · V15.3 平板工具切换修正版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -2859,10 +2859,327 @@
       color: #fca5a5;
     }
 
+  
+    /* V15.2：稳定触控、平板快捷操作与全屏入口 */
+    .tablet-action-dock,
+    .tablet-more-panel {
+      display: none;
+    }
+
+    .fullscreen-guide-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      place-items: center;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.38);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .fullscreen-guide-modal.visible {
+      display: grid;
+    }
+
+    .fullscreen-guide-card {
+      width: min(430px, calc(100vw - 28px));
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel-bg);
+      color: var(--text);
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    }
+
+    .fullscreen-guide-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 17px;
+    }
+
+    .fullscreen-guide-header button {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--control-bg);
+      color: var(--text);
+      font-size: 22px;
+    }
+
+    .fullscreen-guide-content {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .fullscreen-guide-content strong {
+      color: var(--text);
+    }
+
+    .fullscreen-guide-content ol {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    .fullscreen-guide-confirm {
+      width: 100%;
+      height: 42px;
+      margin-top: 15px;
+      border: 0;
+      border-radius: 11px;
+      background: var(--primary);
+      color: white;
+      font-weight: 700;
+    }
+
+    @media (pointer: coarse) {
+      .tablet-action-dock {
+        position: fixed;
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        bottom: max(8px, env(safe-area-inset-bottom));
+        z-index: 700;
+        display: flex;
+        align-items: stretch;
+        gap: 4px;
+        min-height: 58px;
+        padding: 5px;
+        overflow-x: auto;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.22);
+        backdrop-filter: blur(18px) saturate(1.2);
+        -webkit-backdrop-filter: blur(18px) saturate(1.2);
+        scrollbar-width: none;
+        touch-action: pan-x;
+      }
+
+      .tablet-action-dock::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tablet-action-dock button {
+        flex: 1 0 66px;
+        min-width: 66px;
+        min-height: 48px;
+        display: grid;
+        grid-template-rows: 22px 15px;
+        place-items: center;
+        gap: 1px;
+        padding: 3px 5px;
+        border: 1px solid transparent;
+        border-radius: 11px;
+        background: transparent;
+        color: var(--text);
+        font-size: 11px;
+        touch-action: manipulation;
+      }
+
+      .tablet-action-dock button.active {
+        border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+        background: color-mix(in srgb, var(--primary) 14%, transparent);
+        color: var(--primary);
+      }
+
+      .tablet-action-icon {
+        font-size: 20px;
+        line-height: 1;
+      }
+
+      .tablet-more-panel {
+        position: fixed;
+        left: max(10px, env(safe-area-inset-left));
+        right: max(10px, env(safe-area-inset-right));
+        bottom: calc(max(8px, env(safe-area-inset-bottom)) + 68px);
+        z-index: 699;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--panel-bg) 96%, transparent);
+        color: var(--text);
+        box-shadow: 0 18px 52px rgba(15, 23, 42, 0.25);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .tablet-more-panel.visible {
+        display: block;
+      }
+
+      .tablet-more-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 9px;
+      }
+
+      .tablet-more-header button {
+        width: 36px;
+        height: 36px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--control-bg);
+        color: var(--text);
+        font-size: 22px;
+      }
+
+      .tablet-more-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+      }
+
+      .tablet-more-grid button {
+        min-height: 46px;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--control-bg);
+        color: var(--text);
+        font-size: 12px;
+        touch-action: manipulation;
+      }
+
+      .tablet-more-grid button.danger {
+        color: var(--danger);
+      }
+
+      .tablet-more-grid .eraser-svg-icon {
+        width: 17px;
+        height: 17px;
+        margin-right: 3px;
+        vertical-align: -4px;
+      }
+
+      body.pure-mode .tablet-action-dock {
+        display: flex !important;
+      }
+
+      body.pure-mode .pure-mode-exit {
+        top: calc(max(10px, env(safe-area-inset-top)));
+        left: max(10px, env(safe-area-inset-left));
+        display: block !important;
+        transform: none !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+
+      body.pure-mode .pure-mode-exit button {
+        min-height: 48px;
+        padding: 0 16px;
+        border-width: 1px;
+        font-size: 14px;
+        font-weight: 750;
+      }
+
+      body.pure-mode .pure-mode-hotspot {
+        display: none !important;
+      }
+
+      body.pure-mode .workspace {
+        padding-bottom: 74px;
+      }
+
+      .status {
+        bottom: 78px;
+      }
+
+      .pure-emphasis-toolbar {
+        max-width: calc(100vw - 16px) !important;
+      }
+    }
+
+    @media (pointer: coarse) and (max-width: 760px) {
+      .tablet-more-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+  
+    /* V15.3：纯模式工具一触即换 */
+    .pure-emphasis-toolbar {
+      z-index: 760 !important;
+    }
+
+    .pure-tool-settings-popover {
+      z-index: 770 !important;
+    }
+
+    .pure-emphasis-toolbar button,
+    .pure-emphasis-toolbar select {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .pure-emphasis-toolbar button.pure-touch-pressed {
+      transform: scale(0.92);
+      background: color-mix(in srgb, var(--primary) 18%, transparent) !important;
+      border-color: color-mix(in srgb, var(--primary) 42%, transparent) !important;
+    }
+
+    @media (pointer: coarse) {
+      .pure-emphasis-toolbar {
+        gap: 5px !important;
+        min-height: 52px;
+        padding: 5px !important;
+      }
+
+      .pure-emphasis-toolbar button {
+        min-width: 42px !important;
+        width: 42px;
+        min-height: 42px !important;
+        height: 42px !important;
+        padding: 0 !important;
+        border-radius: 11px !important;
+        font-size: 19px !important;
+      }
+
+      .pure-emphasis-toolbar .pure-tool-summary {
+        width: auto !important;
+        min-width: 48px !important;
+        padding: 0 7px !important;
+      }
+
+      .pure-emphasis-toolbar .pure-emphasis-drag {
+        min-width: 30px !important;
+        width: 30px !important;
+        min-height: 42px !important;
+        height: 42px !important;
+      }
+
+      .pure-emphasis-toolbar .pure-marker-controls select {
+        min-width: 44px !important;
+        width: 44px !important;
+        min-height: 42px !important;
+        height: 42px !important;
+        font-size: 19px !important;
+      }
+
+      .pure-emphasis-toolbar.vertical {
+        max-width: 54px !important;
+      }
+
+      .pure-emphasis-toolbar.vertical button,
+      .pure-emphasis-toolbar.vertical .pure-marker-controls select {
+        width: 42px !important;
+      }
+
+      .pure-emphasis-toolbar .eraser-svg-icon {
+        width: 23px;
+        height: 23px;
+      }
+    }
+
   </style>
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
 </head>
 <body>
@@ -2905,6 +3222,9 @@
           <button id="fitBtn">适应</button>
           <button id="pureModeBtn" title="快捷键 P">
             纯模式 <span class="shortcut-key">P</span>
+          </button>
+          <button id="fullscreenBtn" title="进入全屏或查看安装到主屏幕的方法">
+            ⛶ 全屏
           </button>
           <button id="normalMoreBtn" class="normal-more-toggle"
             title="展开更多工具">更多 ▾</button>
@@ -3077,7 +3397,7 @@
         <div class="local-tools">
           <div class="side-section-title">备份与迁移</div>
           <div id="browserStorageStatus" class="local-file-status">
-            正在初始化浏览器大容量存储…
+            正在读取本设备浏览器存储额度…
           </div>
           <div id="localFileStatus" class="local-file-status">当前笔记尚未绑定本地文件</div>
           <div class="local-tools-grid">
@@ -3095,8 +3415,8 @@
             </label>
           </div>
           <div class="library-migration-note">
-            浏览器数据现存入 IndexedDB。换设备时：旧设备点击“备份全部笔记”，
-            新设备打开本站后点击“导入完整笔记库”。
+            IndexedDB 额度由当前设备、浏览器与磁盘空间共同决定，显示值是估算。
+            换设备时请使用“备份全部笔记”和“导入完整笔记库”。
           </div>
         </div>
       </aside>
@@ -3339,11 +3659,82 @@
 
   <div id="pureModeHotspot" class="pure-mode-hotspot" aria-hidden="true"></div>
   <div id="pureModeExit" class="pure-mode-exit" aria-hidden="true">
-    <button id="exitPureModeBtn" type="button">退出纯模式 · Esc</button>
+    <button id="exitPureModeBtn" type="button">← 退出纯模式</button>
   </div>
   <div id="pureModeEntryToast" class="pure-mode-entry-toast">
-    已进入纯模式。按 Esc 退出，鼠标移到顶部也可退出。
+    已进入纯模式。平板可点击左上角“退出纯模式”。
   </div>
+
+  <div id="tabletActionDock" class="tablet-action-dock" aria-label="平板操作栏">
+    <button id="tabletPanBtn" type="button" title="手掌移动画布">
+      <span class="tablet-action-icon">✋</span><span>移动</span>
+    </button>
+    <button id="tabletSelectBtn" type="button" title="选择节点或对象">
+      <span class="tablet-action-icon">↖</span><span>选择</span>
+    </button>
+    <button id="tabletAddNodeBtn" type="button" title="新建节点">
+      <span class="tablet-action-icon">＋</span><span>节点</span>
+    </button>
+    <button id="tabletAddChildBtn" type="button" title="为当前节点添加子节点">
+      <span class="tablet-action-icon">↳</span><span>子节点</span>
+    </button>
+    <button id="tabletEditBtn" type="button" title="编辑当前节点或文字">
+      <span class="tablet-action-icon">✎</span><span>编辑</span>
+    </button>
+    <button id="tabletConnectBtn" type="button" title="连接两个节点">
+      <span class="tablet-action-icon">⌁</span><span>连接</span>
+    </button>
+    <button id="tabletMoreBtn" type="button" title="更多平板操作">
+      <span class="tablet-action-icon">•••</span><span>更多</span>
+    </button>
+    <button id="tabletFullscreenBtn" type="button" title="进入全屏">
+      <span class="tablet-action-icon">⛶</span><span>全屏</span>
+    </button>
+  </div>
+
+  <div id="tabletMorePanel" class="tablet-more-panel" aria-hidden="true">
+    <div class="tablet-more-header">
+      <strong>平板快捷操作</strong>
+      <button id="closeTabletMoreBtn" type="button" title="关闭">×</button>
+    </div>
+    <div class="tablet-more-grid">
+      <button id="tabletAddSiblingBtn" type="button">＋ 同级节点</button>
+      <button id="tabletFreeTextBtn" type="button">T 自由文字</button>
+      <button id="tabletRelationBtn" type="button">关系标注</button>
+      <button id="tabletDeleteBtn" class="danger" type="button">删除选中</button>
+
+      <button id="tabletPenBtn" type="button">✎ 钢笔</button>
+      <button id="tabletWatercolorBtn" type="button">▰ 水彩</button>
+      <button id="tabletEraserBtn" type="button">
+        <svg class="eraser-svg-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7.2 18.4 3.9 15.1a2.35 2.35 0 0 1 0-3.3l7.3-7.3a2.35 2.35 0 0 1 3.3 0l5 5a2.35 2.35 0 0 1 0 3.3l-5.6 5.6H7.2Z"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="m9.1 6.5 8.4 8.4M7.2 18.4h12.1"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        橡皮
+      </button>
+      <button id="tabletFrameBtn" type="button">▭ 矩形框</button>
+
+      <button id="tabletLineBtn" type="button">╱ 直线</button>
+      <button id="tabletFitBtn" type="button">适应画布</button>
+      <button id="tabletSidebarBtn" type="button">笔记库</button>
+      <button id="tabletPureBtn" type="button">切换纯模式</button>
+    </div>
+  </div>
+
+  <div id="fullscreenGuideModal" class="fullscreen-guide-modal" aria-hidden="true">
+    <div class="fullscreen-guide-card">
+      <div class="fullscreen-guide-header">
+        <strong>全屏使用</strong>
+        <button id="closeFullscreenGuideBtn" type="button">×</button>
+      </div>
+      <div id="fullscreenGuideText" class="fullscreen-guide-content"></div>
+      <button id="confirmFullscreenGuideBtn" class="fullscreen-guide-confirm"
+        type="button">知道了</button>
+    </div>
+  </div>
+
 
   <div id="contextMenu" class="context-menu">
     <button data-action="add-child">添加子节点</button>
@@ -3493,6 +3884,36 @@
       const pureModeExit = document.getElementById("pureModeExit");
       const exitPureModeBtn = document.getElementById("exitPureModeBtn");
       const pureModeEntryToast = document.getElementById("pureModeEntryToast");
+      const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+      const tabletActionDock = document.getElementById("tabletActionDock");
+      const tabletPanBtn = document.getElementById("tabletPanBtn");
+      const tabletSelectBtn = document.getElementById("tabletSelectBtn");
+      const tabletAddNodeBtn = document.getElementById("tabletAddNodeBtn");
+      const tabletAddChildBtn = document.getElementById("tabletAddChildBtn");
+      const tabletEditBtn = document.getElementById("tabletEditBtn");
+      const tabletConnectBtn = document.getElementById("tabletConnectBtn");
+      const tabletMoreBtn = document.getElementById("tabletMoreBtn");
+      const tabletFullscreenBtn = document.getElementById("tabletFullscreenBtn");
+      const tabletMorePanel = document.getElementById("tabletMorePanel");
+      const closeTabletMoreBtn = document.getElementById("closeTabletMoreBtn");
+      const tabletAddSiblingBtn = document.getElementById("tabletAddSiblingBtn");
+      const tabletFreeTextBtn = document.getElementById("tabletFreeTextBtn");
+      const tabletRelationBtn = document.getElementById("tabletRelationBtn");
+      const tabletDeleteBtn = document.getElementById("tabletDeleteBtn");
+      const tabletPenBtn = document.getElementById("tabletPenBtn");
+      const tabletWatercolorBtn = document.getElementById("tabletWatercolorBtn");
+      const tabletEraserBtn = document.getElementById("tabletEraserBtn");
+      const tabletFrameBtn = document.getElementById("tabletFrameBtn");
+      const tabletLineBtn = document.getElementById("tabletLineBtn");
+      const tabletFitBtn = document.getElementById("tabletFitBtn");
+      const tabletSidebarBtn = document.getElementById("tabletSidebarBtn");
+      const tabletPureBtn = document.getElementById("tabletPureBtn");
+
+      const fullscreenGuideModal = document.getElementById("fullscreenGuideModal");
+      const fullscreenGuideText = document.getElementById("fullscreenGuideText");
+      const closeFullscreenGuideBtn = document.getElementById("closeFullscreenGuideBtn");
+      const confirmFullscreenGuideBtn = document.getElementById("confirmFullscreenGuideBtn");
 
       const richSelectionToolbar = document.getElementById("richSelectionToolbar");
       const richBoldBtn = document.getElementById("richBoldBtn");
@@ -3585,6 +4006,7 @@
       let eraserRenderFrame = null;
       let touchEventPanState = null;
       let drawingTouchPanState = null;
+      let tabletPanMode = false;
       let currentStrokeRenderedCount = 0;
       let currentStrokeRenderFrame = null;
       let drawingCanvasFrame = null;
@@ -3592,6 +4014,10 @@
       let drawingCanvasDpr = 1;
       let lastPenActivityAt = 0;
       const PALM_REJECTION_GRACE_MS = 700;
+      const SINGLE_FINGER_PAN_START_DISTANCE = 14;
+      const SINGLE_FINGER_PAN_ARM_DELAY_MS = 90;
+      const SINGLE_FINGER_PAN_MAX_CONTACT = 48;
+      const SINGLE_FINGER_PAN_CANCEL_CONTACT = 64;
       let lastCanvasPointer = null;
       let toastTimer = null;
       const DRAG_START_DISTANCE = 7;
@@ -3975,7 +4401,7 @@
         try {
           if (!navigator.storage?.estimate) {
             setBrowserStorageStatus(
-              "IndexedDB 大容量存储已启用",
+              "本设备 IndexedDB 大容量存储已启用",
               "ok"
             );
             return;
@@ -3993,13 +4419,13 @@
           }
 
           setBrowserStorageStatus(
-            `IndexedDB 已启用 · 已用 ${formatStorageBytes(usage)}` +
+            `本设备 IndexedDB · 已用 ${formatStorageBytes(usage)}` +
               (quota ? ` / ${formatStorageBytes(quota)}` : "") +
               persistedText,
             ratio > 0.85 ? "warning" : "ok"
           );
         } catch {
-          setBrowserStorageStatus("IndexedDB 大容量存储已启用", "ok");
+          setBrowserStorageStatus("本设备 IndexedDB 大容量存储已启用", "ok");
         }
       }
 
@@ -6246,6 +6672,13 @@
         }[tool] || tool;
       }
 
+      function activateCanvasToolFromUi(tool, options = {}) {
+        if (tabletPanMode) {
+          setTabletPanMode(false);
+        }
+        setActiveCanvasTool(tool, options);
+      }
+
       function setActiveCanvasTool(tool, { silent = false } = {}) {
         const supported = new Set([
           "select", "stamp", "frame", "line",
@@ -6271,7 +6704,11 @@
           line: [addLineBtn, pureLineBtn]
         };
         for (const [name, items] of Object.entries(buttons)) {
-          for (const button of items) button?.classList.toggle("active", name === activeCanvasTool);
+          for (const button of items) {
+            const active = name === activeCanvasTool;
+            button?.classList.toggle("active", active);
+            button?.setAttribute("aria-pressed", active ? "true" : "false");
+          }
         }
 
         if (activeCanvasTool !== "stamp") {
@@ -6285,6 +6722,21 @@
         if (pureToolSettingsOpen) {
           setPureToolSettingsVisible(true);
         }
+
+        tabletPanBtn.classList.toggle("active", tabletPanMode);
+        tabletSelectBtn.classList.toggle(
+          "active",
+          !tabletPanMode && activeCanvasTool === "select"
+        );
+        tabletPenBtn.classList.toggle("active", activeCanvasTool === "pen");
+        tabletWatercolorBtn.classList.toggle(
+          "active",
+          activeCanvasTool === "watercolor"
+        );
+        tabletEraserBtn.classList.toggle(
+          "active",
+          activeCanvasTool === "eraser"
+        );
 
         if (!silent) {
           const settings = ensureDrawingSettings();
@@ -6884,16 +7336,38 @@
         }
       }
 
-      function isLikelyPalmContact(event) {
-        if (event.pointerType !== "touch") return false;
+      function touchContactSize(event) {
         const width = Number(event.width) || 1;
         const height = Number(event.height) || 1;
-        return Math.max(width, height) > 42;
+        return Math.max(width, height);
       }
 
-      function beginDrawingTouchPan(event) {
+      function isLikelyPalmContact(event) {
+        if (event.pointerType !== "touch") return false;
+        return touchContactSize(event) > SINGLE_FINGER_PAN_MAX_CONTACT;
+      }
+
+      function cancelDrawingTouchPan(event = null) {
+        if (!drawingTouchPanState) return false;
+
+        const pointerId = drawingTouchPanState.pointerId;
+        drawingTouchPanState = null;
+
+        try {
+          if (event && workspace.hasPointerCapture(pointerId)) {
+            workspace.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // 无需处理。
+        }
+
+        workspace.classList.remove("panning");
+        return true;
+      }
+
+      function beginDrawingTouchPan(event, { force = false } = {}) {
         const settings = ensureDrawingSettings();
-        if (!settings.singleFingerPan) return false;
+        if (!force && !settings.singleFingerPan) return false;
 
         if (isLikelyPalmContact(event)) {
           event.preventDefault();
@@ -6901,7 +7375,10 @@
           return true;
         }
 
-        if (drawingTouchPanState && drawingTouchPanState.pointerId !== event.pointerId) {
+        if (
+          drawingTouchPanState &&
+          drawingTouchPanState.pointerId !== event.pointerId
+        ) {
           event.preventDefault();
           event.stopPropagation();
           return true;
@@ -6909,10 +7386,11 @@
 
         drawingTouchPanState = {
           pointerId: event.pointerId,
-          startClientX: event.clientX,
-          startClientY: event.clientY,
-          startPanX: state.panX,
-          startPanY: state.panY,
+          initialClientX: event.clientX,
+          initialClientY: event.clientY,
+          lastClientX: event.clientX,
+          lastClientY: event.clientY,
+          startedAt: performance.now(),
           started: false
         };
 
@@ -6928,22 +7406,55 @@
       }
 
       function moveDrawingTouchPan(event) {
-        if (!drawingTouchPanState || drawingTouchPanState.pointerId !== event.pointerId) {
+        if (
+          !drawingTouchPanState ||
+          drawingTouchPanState.pointerId !== event.pointerId
+        ) {
           return false;
         }
 
-        const dx = event.clientX - drawingTouchPanState.startClientX;
-        const dy = event.clientY - drawingTouchPanState.startClientY;
-
-        if (!drawingTouchPanState.started && Math.hypot(dx, dy) < 5) {
+        if (touchContactSize(event) > SINGLE_FINGER_PAN_CANCEL_CONTACT) {
+          cancelDrawingTouchPan(event);
           event.preventDefault();
           event.stopPropagation();
           return true;
         }
 
-        drawingTouchPanState.started = true;
-        state.panX = drawingTouchPanState.startPanX + dx;
-        state.panY = drawingTouchPanState.startPanY + dy;
+        if (!drawingTouchPanState.started) {
+          const totalDx =
+            event.clientX - drawingTouchPanState.initialClientX;
+          const totalDy =
+            event.clientY - drawingTouchPanState.initialClientY;
+          const totalDistance = Math.hypot(totalDx, totalDy);
+          const elapsed = performance.now() - drawingTouchPanState.startedAt;
+
+          if (
+            totalDistance < SINGLE_FINGER_PAN_START_DISTANCE ||
+            elapsed < SINGLE_FINGER_PAN_ARM_DELAY_MS
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+
+          // 从确认拖动的当前位置起算，避免画布突然跳动。
+          drawingTouchPanState.started = true;
+          drawingTouchPanState.lastClientX = event.clientX;
+          drawingTouchPanState.lastClientY = event.clientY;
+          workspace.classList.add("panning");
+
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+
+        const dx = event.clientX - drawingTouchPanState.lastClientX;
+        const dy = event.clientY - drawingTouchPanState.lastClientY;
+        drawingTouchPanState.lastClientX = event.clientX;
+        drawingTouchPanState.lastClientY = event.clientY;
+
+        state.panX += dx;
+        state.panY += dy;
         applyTransform();
 
         event.preventDefault();
@@ -6952,20 +7463,15 @@
       }
 
       function endDrawingTouchPan(event) {
-        if (!drawingTouchPanState || drawingTouchPanState.pointerId !== event.pointerId) {
+        if (
+          !drawingTouchPanState ||
+          drawingTouchPanState.pointerId !== event.pointerId
+        ) {
           return false;
         }
 
         const changed = drawingTouchPanState.started;
-        drawingTouchPanState = null;
-
-        try {
-          if (workspace.hasPointerCapture(event.pointerId)) {
-            workspace.releasePointerCapture(event.pointerId);
-          }
-        } catch {
-          // 无需处理。
-        }
+        cancelDrawingTouchPan(event);
 
         if (changed) autosave();
         event.preventDefault();
@@ -6974,16 +7480,17 @@
       }
 
       function handleCanvasToolPointerDown(event) {
+        if (event.pointerType === "touch" && tabletPanMode) {
+          return beginDrawingTouchPan(event, { force: true });
+        }
+
         if (activeCanvasTool === "select") return false;
 
-        if (event.pointerType === "touch") {
-          if (ensureDrawingSettings().singleFingerPan) {
-            if ("ontouchstart" in window) {
-              event.stopPropagation();
-              return true;
-            }
-            return beginDrawingTouchPan(event);
-          }
+        if (
+          event.pointerType === "touch" &&
+          ensureDrawingSettings().singleFingerPan
+        ) {
+          return beginDrawingTouchPan(event);
         }
 
         if (!canUsePointerForCanvasTool(event)) {
@@ -7084,18 +7591,9 @@
       }
 
       function handleCanvasToolPointerMove(event) {
-        if (activeCanvasTool === "select") return false;
-
-        if (
-          event.pointerType === "touch" &&
-          ensureDrawingSettings().singleFingerPan &&
-          "ontouchstart" in window
-        ) {
-          event.stopPropagation();
-          return true;
-        }
-
         if (moveDrawingTouchPan(event)) return true;
+
+        if (activeCanvasTool === "select") return false;
 
         if (
           event.pointerType === "touch" &&
@@ -7148,15 +7646,6 @@
       }
 
       function releaseCanvasToolPointer(event) {
-        if (
-          event.pointerType === "touch" &&
-          ensureDrawingSettings().singleFingerPan &&
-          "ontouchstart" in window
-        ) {
-          event.stopPropagation();
-          return true;
-        }
-
         if (endDrawingTouchPan(event)) return true;
 
         if (
@@ -7856,6 +8345,7 @@
       }
 
       workspace.addEventListener("touchstart", event => {
+        if ("PointerEvent" in window) return;
         if (
           activeCanvasTool === "select" ||
           !ensureDrawingSettings().singleFingerPan ||
@@ -7884,6 +8374,7 @@
       }, { capture: true, passive: false });
 
       workspace.addEventListener("touchmove", event => {
+        if ("PointerEvent" in window) return;
         if (!touchEventPanState) return;
 
         const touch = findTouchByIdentifier(
@@ -7911,6 +8402,7 @@
       }, { capture: true, passive: false });
 
       const finishTouchEventPan = event => {
+        if ("PointerEvent" in window) return;
         if (!touchEventPanState) return;
 
         const remaining = findTouchByIdentifier(
@@ -7964,12 +8456,25 @@
         }
         hideContextMenu();
         if (!branchPanel.contains(event.target)) closeBranchPanel();
-        if (
+        const interactiveTarget = event.target.closest?.(
+          ".node, .free-item, .inline-editor, .resize-handle, " +
+          ".tablet-action-dock, .tablet-more-panel, .pure-emphasis-toolbar"
+        );
+
+        if (event.pointerType === "touch") {
+          if (interactiveTarget) return;
+        } else if (
           event.target !== workspace &&
           event.target !== scene &&
           event.target !== nodeLayer &&
-          event.target !== freeLayer
-        ) return;
+          event.target !== freeLayer &&
+          event.target !== drawCanvas &&
+          event.target !== laserCanvas &&
+          event.target.id !== "edgeLayer" &&
+          !event.target.closest?.("#edgeLayer")
+        ) {
+          return;
+        }
 
         if (state.connectMode) {
           state.connectSourceId = null;
@@ -8011,10 +8516,15 @@
 
         clearSelection();
         panState = {
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
           startX: event.clientX,
           startY: event.clientY,
+          lastX: event.clientX,
+          lastY: event.clientY,
           panX: state.panX,
-          panY: state.panY
+          panY: state.panY,
+          started: event.pointerType !== "touch"
         };
         workspace.classList.add("panning");
         try {
@@ -8113,9 +8623,31 @@
           return;
         }
 
-        if (panState) {
-          state.panX = panState.panX + event.clientX - panState.startX;
-          state.panY = panState.panY + event.clientY - panState.startY;
+        if (panState && panState.pointerId === event.pointerId) {
+          if (!panState.started) {
+            const distance = Math.hypot(
+              event.clientX - panState.startX,
+              event.clientY - panState.startY
+            );
+            if (distance < 8) return;
+
+            panState.started = true;
+            panState.lastX = event.clientX;
+            panState.lastY = event.clientY;
+            workspace.classList.add("panning");
+            return;
+          }
+
+          if (panState.pointerType === "touch") {
+            state.panX += event.clientX - panState.lastX;
+            state.panY += event.clientY - panState.lastY;
+            panState.lastX = event.clientX;
+            panState.lastY = event.clientY;
+          } else {
+            state.panX = panState.panX + event.clientX - panState.startX;
+            state.panY = panState.panY + event.clientY - panState.startY;
+          }
+
           applyTransform();
         }
       });
@@ -8210,6 +8742,58 @@
         autosave();
       }, { passive: false });
 
+      function setTabletMoreVisible(visible) {
+        tabletMorePanel.classList.toggle("visible", Boolean(visible));
+        tabletMorePanel.setAttribute("aria-hidden", visible ? "false" : "true");
+        tabletMoreBtn.classList.toggle("active", Boolean(visible));
+      }
+
+      function setTabletPanMode(enabled) {
+        tabletPanMode = Boolean(enabled);
+        tabletPanBtn.classList.toggle("active", tabletPanMode);
+        tabletSelectBtn.classList.toggle("active", !tabletPanMode);
+
+        if (tabletPanMode) {
+          setActiveCanvasTool("select");
+          statusEl.textContent =
+            "手掌移动模式：一根手指可从节点或空白处拖动画布";
+        } else {
+          statusEl.textContent =
+            state.selectedId ? "已恢复选择模式" : "选择模式";
+        }
+      }
+
+      function selectedTabletNode() {
+        const candidate =
+          state.selectedId ||
+          [...selectedNodeIds][0] ||
+          null;
+        return candidate ? getNode(candidate) : null;
+      }
+
+      function addTabletSiblingNode() {
+        const current = selectedTabletNode();
+        if (!current) {
+          addNodeBtn.click();
+          return;
+        }
+
+        const siblings = childrenOf(current.parentId);
+        const offset = Math.max(120, current.height + 38);
+        const node = addNodeAt(
+          current.x,
+          current.y + offset + Math.max(0, siblings.length - 1) * 14,
+          current.parentId,
+          "新同级节点",
+          "在这里输入内容"
+        );
+        focusTitle(node.id);
+      }
+
+      function closeTabletPanels() {
+        setTabletMoreVisible(false);
+      }
+
       addNodeBtn.addEventListener("click", () => {
         if (state.selectedId) {
           addChildNode(state.selectedId);
@@ -8257,6 +8841,89 @@
       clearSelectionBtn.addEventListener("click", () => clearSelection());
 
       relationLabelBtn.addEventListener("click", () => editRelationLabel());
+      function isStandaloneDisplayMode() {
+        return Boolean(
+          window.matchMedia?.("(display-mode: standalone)").matches ||
+          window.matchMedia?.("(display-mode: fullscreen)").matches ||
+          window.navigator.standalone
+        );
+      }
+
+      function currentFullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement;
+      }
+
+      function setFullscreenGuideVisible(visible, message = "") {
+        if (message) fullscreenGuideText.innerHTML = message;
+        fullscreenGuideModal.classList.toggle("visible", Boolean(visible));
+        fullscreenGuideModal.setAttribute("aria-hidden", visible ? "false" : "true");
+      }
+
+      function fullscreenGuideHtml() {
+        const isiPad =
+          /iPad|Macintosh/i.test(navigator.userAgent) &&
+          navigator.maxTouchPoints > 1;
+
+        if (isiPad) {
+          return `
+            <p>iPad Safari 通常不能让普通网页永久隐藏浏览器菜单栏。
+            最稳定的方法是把本站安装到主屏幕：</p>
+            <ol>
+              <li>使用 <strong>Safari</strong> 打开当前 GitHub Pages 地址。</li>
+              <li>点击浏览器顶部的 <strong>分享</strong> 按钮。</li>
+              <li>选择 <strong>添加到主屏幕</strong>。</li>
+              <li>以后从桌面图标打开，即可使用接近独立应用的界面。</li>
+            </ol>
+          `;
+        }
+
+        return `
+          <p>当前浏览器没有允许网页直接进入全屏，或者全屏请求被系统拒绝。</p>
+          <p>可以使用浏览器菜单中的 <strong>安装应用</strong>、
+          <strong>添加到主屏幕</strong> 或浏览器自带的全屏命令。</p>
+        `;
+      }
+
+      async function toggleApplicationFullscreen() {
+        if (currentFullscreenElement()) {
+          const exit =
+            document.exitFullscreen ||
+            document.webkitExitFullscreen;
+          if (exit) {
+            await exit.call(document);
+          }
+          return;
+        }
+
+        if (isStandaloneDisplayMode()) {
+          statusEl.textContent = "当前已经从主屏幕以独立应用模式运行";
+          return;
+        }
+
+        const root = document.documentElement;
+        const request =
+          root.requestFullscreen ||
+          root.webkitRequestFullscreen;
+
+        if (!request) {
+          setFullscreenGuideVisible(true, fullscreenGuideHtml());
+          return;
+        }
+
+        try {
+          await request.call(root, { navigationUI: "hide" });
+        } catch {
+          setFullscreenGuideVisible(true, fullscreenGuideHtml());
+        }
+      }
+
+      function updateFullscreenButtons() {
+        const active = Boolean(currentFullscreenElement() || isStandaloneDisplayMode());
+        fullscreenBtn.classList.toggle("active", active);
+        tabletFullscreenBtn.classList.toggle("active", active);
+        fullscreenBtn.textContent = active ? "退出全屏" : "⛶ 全屏";
+      }
+
       function setNormalMoreVisible(visible) {
         toolbarEl.classList.toggle("more-open", Boolean(visible));
         normalMoreBtn.classList.toggle("active", Boolean(visible));
@@ -8426,12 +9093,12 @@
 
       markerSelect.addEventListener("change", () => {
         if (!markerSelect.value) {
-          setActiveCanvasTool("select");
+          activateCanvasToolFromUi("select");
           return;
         }
         activeStampSymbol = markerSelect.value;
         pureMarkerSelect.value = markerSelect.value;
-        setActiveCanvasTool("stamp");
+        activateCanvasToolFromUi("stamp");
       });
       markerColorInput.addEventListener("input", () => {
         updateToolSetting("stamp", { color: markerColorInput.value });
@@ -8522,19 +9189,16 @@
 
       pureMarkerSelect.addEventListener("change", () => {
         if (!pureMarkerSelect.value) {
-          setActiveCanvasTool("select");
+          activateCanvasToolFromUi("select");
           return;
         }
         activeStampSymbol = pureMarkerSelect.value;
         markerSelect.value = pureMarkerSelect.value;
-        setActiveCanvasTool("stamp");
+        activateCanvasToolFromUi("stamp");
       });
       pureMarkerColor.addEventListener("input", () => {
         updateToolSetting("stamp", { color: pureMarkerColor.value });
       });
-      pureFrameBtn.addEventListener("click", () => setActiveCanvasTool("frame"));
-      pureLineBtn.addEventListener("click", () => setActiveCanvasTool("line"));
-
       function beginPureToolbarDrag(event) {
         if (
           event.target.closest(
@@ -8569,7 +9233,12 @@
 
         const settings = ensurePureToolsSettings();
         const maxX = Math.max(8, window.innerWidth - pureEmphasisToolbar.offsetWidth - 8);
-        const maxY = Math.max(8, window.innerHeight - pureEmphasisToolbar.offsetHeight - 8);
+        const maxY = Math.max(
+          8,
+          window.innerHeight -
+            pureEmphasisToolbar.offsetHeight -
+            pureToolbarBottomReserve()
+        );
 
         settings.x = Math.max(
           8,
@@ -8616,16 +9285,76 @@
         pureToolbarDragState = null;
       });
 
-      selectToolBtn.addEventListener("click", () => setActiveCanvasTool("select"));
-      pureSelectToolBtn.addEventListener("click", () => setActiveCanvasTool("select"));
-      penToolBtn.addEventListener("click", () => setActiveCanvasTool("pen"));
-      purePenBtn.addEventListener("click", () => setActiveCanvasTool("pen"));
-      watercolorToolBtn.addEventListener("click", () => setActiveCanvasTool("watercolor"));
-      pureWatercolorBtn.addEventListener("click", () => setActiveCanvasTool("watercolor"));
-      laserToolBtn.addEventListener("click", () => setActiveCanvasTool("laser"));
-      pureLaserBtn.addEventListener("click", () => setActiveCanvasTool("laser"));
-      eraserToolBtn.addEventListener("click", () => setActiveCanvasTool("eraser"));
-      pureEraserBtn.addEventListener("click", () => setActiveCanvasTool("eraser"));
+      function bindImmediatePureToolButton(button, tool) {
+        let suppressClickUntil = 0;
+
+        button.addEventListener(
+          "pointerdown",
+          event => {
+            if (event.pointerType !== "touch" && event.pointerType !== "pen") {
+              return;
+            }
+
+            suppressClickUntil = performance.now() + 800;
+            event.preventDefault();
+            event.stopPropagation();
+
+            button.classList.add("pure-touch-pressed");
+            activateCanvasToolFromUi(tool);
+          },
+          { capture: true }
+        );
+
+        const clearPressed = () => {
+          button.classList.remove("pure-touch-pressed");
+        };
+
+        button.addEventListener("pointerup", clearPressed, { capture: true });
+        button.addEventListener("pointercancel", clearPressed, { capture: true });
+        button.addEventListener("pointerleave", clearPressed, { capture: true });
+
+        button.addEventListener(
+          "click",
+          event => {
+            if (performance.now() < suppressClickUntil) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              return;
+            }
+            activateCanvasToolFromUi(tool);
+          },
+          { capture: true }
+        );
+      }
+
+      selectToolBtn.addEventListener(
+        "click",
+        () => activateCanvasToolFromUi("select")
+      );
+      penToolBtn.addEventListener(
+        "click",
+        () => activateCanvasToolFromUi("pen")
+      );
+      watercolorToolBtn.addEventListener(
+        "click",
+        () => activateCanvasToolFromUi("watercolor")
+      );
+      laserToolBtn.addEventListener(
+        "click",
+        () => activateCanvasToolFromUi("laser")
+      );
+      eraserToolBtn.addEventListener(
+        "click",
+        () => activateCanvasToolFromUi("eraser")
+      );
+
+      bindImmediatePureToolButton(pureSelectToolBtn, "select");
+      bindImmediatePureToolButton(pureFrameBtn, "frame");
+      bindImmediatePureToolButton(pureLineBtn, "line");
+      bindImmediatePureToolButton(purePenBtn, "pen");
+      bindImmediatePureToolButton(pureWatercolorBtn, "watercolor");
+      bindImmediatePureToolButton(pureLaserBtn, "laser");
+      bindImmediatePureToolButton(pureEraserBtn, "eraser");
 
       drawingColorInput.addEventListener("input", () => {
         const tool = activeAdjustableTool();
@@ -8681,6 +9410,130 @@
       });
 
       fitBtn.addEventListener("click", fitView);
+      fullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
+      tabletFullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
+      document.addEventListener("fullscreenchange", updateFullscreenButtons);
+      document.addEventListener("webkitfullscreenchange", updateFullscreenButtons);
+
+      closeFullscreenGuideBtn.addEventListener("click", () => {
+        setFullscreenGuideVisible(false);
+      });
+      confirmFullscreenGuideBtn.addEventListener("click", () => {
+        setFullscreenGuideVisible(false);
+      });
+      fullscreenGuideModal.addEventListener("pointerdown", event => {
+        if (event.target === fullscreenGuideModal) {
+          setFullscreenGuideVisible(false);
+        }
+      });
+
+      tabletPanBtn.addEventListener("click", () => {
+        setTabletPanMode(!tabletPanMode);
+        closeTabletPanels();
+      });
+      tabletSelectBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("select");
+        closeTabletPanels();
+      });
+      tabletAddNodeBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        addNodeBtn.click();
+        closeTabletPanels();
+      });
+      tabletAddChildBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        const node = selectedTabletNode();
+        if (node) addChildNode(node.id);
+        else addNodeBtn.click();
+        closeTabletPanels();
+      });
+      tabletEditBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        editSelectedText();
+        closeTabletPanels();
+      });
+      tabletConnectBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        connectBtn.click();
+        tabletConnectBtn.classList.toggle("active", state.connectMode);
+        closeTabletPanels();
+      });
+      tabletMoreBtn.addEventListener("click", event => {
+        event.stopPropagation();
+        setTabletMoreVisible(!tabletMorePanel.classList.contains("visible"));
+      });
+      closeTabletMoreBtn.addEventListener("click", () => {
+        setTabletMoreVisible(false);
+      });
+
+      tabletAddSiblingBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        addTabletSiblingNode();
+        closeTabletPanels();
+      });
+      tabletFreeTextBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        addFreeTextBtn.click();
+        closeTabletPanels();
+      });
+      tabletRelationBtn.addEventListener("click", () => {
+        editRelationLabel();
+        closeTabletPanels();
+      });
+      tabletDeleteBtn.addEventListener("click", () => {
+        deleteSelection();
+        closeTabletPanels();
+      });
+      tabletPenBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("pen");
+        closeTabletPanels();
+      });
+      tabletWatercolorBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("watercolor");
+        closeTabletPanels();
+      });
+      tabletEraserBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("eraser");
+        closeTabletPanels();
+      });
+      tabletFrameBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("frame");
+        closeTabletPanels();
+      });
+      tabletLineBtn.addEventListener("click", () => {
+        setTabletPanMode(false);
+        setActiveCanvasTool("line");
+        closeTabletPanels();
+      });
+      tabletFitBtn.addEventListener("click", () => {
+        fitView();
+        closeTabletPanels();
+      });
+      tabletSidebarBtn.addEventListener("click", () => {
+        setPureMode(false, { announce: false });
+        toggleSidebarBtn.click();
+        closeTabletPanels();
+      });
+      tabletPureBtn.addEventListener("click", () => {
+        togglePureMode();
+        closeTabletPanels();
+      });
+
+      document.addEventListener("pointerdown", event => {
+        if (
+          tabletMorePanel.classList.contains("visible") &&
+          !tabletMorePanel.contains(event.target) &&
+          !tabletMoreBtn.contains(event.target)
+        ) {
+          setTabletMoreVisible(false);
+        }
+      });
+
       pureModeBtn.addEventListener("click", togglePureMode);
       exitPureModeBtn.addEventListener("click", () => setPureMode(false));
 
@@ -9090,6 +9943,17 @@
         if (shouldShow) requestAnimationFrame(positionPureFloatingPanels);
       }
 
+      function pureToolbarBottomReserve() {
+        const coarse = window.matchMedia?.("(pointer: coarse)").matches;
+        if (!coarse || !document.body.classList.contains("pure-mode")) {
+          return 8;
+        }
+
+        const dockHeight =
+          tabletActionDock?.getBoundingClientRect().height || 62;
+        return dockHeight + 18;
+      }
+
       function renderPureTools() {
         const settings = ensurePureToolsSettings();
 
@@ -9137,7 +10001,9 @@
           );
           const maxY = Math.max(
             8,
-            window.innerHeight - pureEmphasisToolbar.offsetHeight - 8
+            window.innerHeight -
+              pureEmphasisToolbar.offsetHeight -
+              pureToolbarBottomReserve()
           );
 
           settings.x = Math.max(8, Math.min(maxX, settings.x));
@@ -9189,6 +10055,8 @@
 
         pureModeBtn?.classList.toggle("active", pureModeEnabled);
         pureModeBtn?.setAttribute("aria-pressed", pureModeEnabled ? "true" : "false");
+        tabletPureBtn?.classList.toggle("active", pureModeEnabled);
+        tabletConnectBtn?.classList.toggle("active", state.connectMode);
         pureModeHotspot?.setAttribute("aria-hidden", pureModeEnabled ? "false" : "true");
         pureModeExit?.setAttribute("aria-hidden", pureModeEnabled ? "false" : "true");
 
@@ -9201,6 +10069,7 @@
           setPureToolsConfigVisible(false);
           setPureToolSettingsVisible(false);
           renderPureTools();
+          requestAnimationFrame(renderPureTools);
           hideContextMenu();
           setShortcutModalVisible(false);
 
@@ -9212,7 +10081,9 @@
 
             pureModeToastTimer = setTimeout(() => {
               pureModeEntryToast?.classList.remove("visible");
-              pureModeExit?.classList.remove("visible");
+              if (!window.matchMedia?.("(pointer: coarse)").matches) {
+                pureModeExit?.classList.remove("visible");
+              }
             }, 2400);
           }
         }
@@ -9477,6 +10348,8 @@
       refreshSelectionRendering();
       renderPureTools();
       updateHistoryButtons();
+      updateFullscreenButtons();
+      setTabletPanMode(false);
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "hidden") return;

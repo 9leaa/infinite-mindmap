@@ -1,5 +1,5 @@
 {
-  "name": "无限画布思维导图",
+  "name": "无限画布思维导图 V15.3",
   "short_name": "无限画布",
   "description": "支持思维导图、自由文字、图片、富文本、Apple Pencil 手写与本地笔记库的无限画布。",
   "start_url": "./",
@@ -18,5 +18,10 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "display_override": [
+    "fullscreen",
+    "standalone",
+    "minimal-ui"
   ]
 }
