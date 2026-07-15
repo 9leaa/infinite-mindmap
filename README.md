@@ -1,48 +1,44 @@
-# 无限画布思维导图 V17
+# 无限画布思维导图 V18
 
-V17 是一次完整重构：
+V18 保留 V16 原有产品和交互，不使用 Excalidraw 作为画布内核。
 
-- Excalidraw 负责无限画布、手写、触摸、平移、缩放、选择和撤销。
-- PDF.js 官方 PDFViewer 负责连续阅读与 Annotation Editor。
-- IndexedDB 使用增量元素存储，普通保存不再写入整张场景。
-- PDF Blob 与画布数据完全分离。
-- 支持多笔记、思维导图节点、PDF 文件卡片、ZIP 备份恢复和 V16 迁移。
+## 保留功能
 
-## 环境
+- 思维导图节点、父子关系、折叠和分支面板
+- 自由文本、图片、PDF 和 Office 附件
+- 原悬浮工具栏和纯净模式
+- 钢笔、水彩笔、激光笔、橡皮
+- Apple Pencil 压感
+- 单指平移和双指缩放
+- 多笔记管理、IndexedDB、本地备份恢复
+- PDF 侧边连续阅读和手写批注
 
-- Node.js 20.19 或更高版本
-- npm 10 或更高版本
+## V18 底层变化
 
-## 开发
+- 768×768 世界坐标静态笔迹 Tile
+- 当前笔迹独立交互 Canvas
+- 一个 requestAnimationFrame 渲染调度器
+- 压力、时间、倾角和方位采样
+- 手写和 PDF 批注逐条写入存储 Worker
+- 编辑期间不运行旧数据后台迁移
+- PDF 当前页高清、相邻页预览、远页回收
+- PDF 完整 CMap 与标准字体资源
+- PDF 自定义压感批注层和归一化页面坐标
+
+## 源码运行
 
 ```bash
 npm ci
-npm run typecheck
-npm run dev
+npm run prepare:vendor
+python -m http.server 8080
 ```
 
-## 构建
+访问 `http://localhost:8080/`。
+
+## 测试
 
 ```bash
-npm run build
+npm test
 ```
 
-构建结果位于 `dist/`。
-
-## 核心目录
-
-```text
-src/App.tsx                    主应用与 Excalidraw 集成
-src/components/PdfWorkspace.tsx  PDF.js Viewer 与批注
-src/db.ts                      增量 IndexedDB
-src/backup.ts                  ZIP 备份恢复
-src/legacy.ts                  V16 一次性迁移
-src/excalidraw-utils.ts        节点、子节点和 PDF 卡片
-public/sw.js                   离线缓存
-```
-
-## 测试和限制
-
-完整测试数据、架构说明和未验证项见：
-
-`V17_ARCHITECTURE_PERFORMANCE_TEST_REPORT.md`
+真实 Apple Pencil 和 iPad WebKit 行为仍需真实设备验收。

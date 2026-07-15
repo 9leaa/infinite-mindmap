@@ -1,27 +1,14 @@
 {
-  "name": "无限画布思维导图 V16.2",
+  "name": "无限画布思维导图 V18",
   "short_name": "无限画布",
-  "description": "修复 iPad 单指平移，使用经典脚本 PDF.js 的连续多页阅读和批注。",
-  "start_url": "./",
+  "description": "自研分块画布、Apple Pencil 压感、增量存储 Worker 和完整 PDF.js 资源的本地优先笔记应用。",
+  "start_url": "./?v=18",
   "scope": "./",
   "display": "standalone",
-  "display_override": [
-    "fullscreen",
-    "standalone",
-    "minimal-ui"
-  ],
   "background_color": "#f7f8fb",
   "theme_color": "#2563eb",
   "icons": [
-    {
-      "src": "./icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    {"src": "./icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "./icon-512.png", "sizes": "512x512", "type": "image/png"}
   ]
 }

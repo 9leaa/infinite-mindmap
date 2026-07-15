@@ -1,72 +1,41 @@
-# 无限画布思维导图 V17：GitHub Pages 部署
+# V18 GitHub Pages 部署说明
 
-## 1. 更新前
+## 更新前
 
-在旧版本中先执行“备份全部笔记”。
+在现有正式版本中先执行“备份全部笔记”。未备份时不要清除网站数据。
 
-V17 会尝试读取 V16 的 IndexedDB 并执行一次性迁移，但迁移不能替代完整备份。
+## 部署
 
-## 2. 使用哪个压缩包
+解压完整部署包，用其中全部内容覆盖仓库根目录：
 
-正式部署使用：
+```bash
+git add -A
+git commit -m "V18 custom tile canvas and pressure PDF annotations"
+git push origin main
+```
 
-`infinite-mindmap-v17-github-pages.zip`
-
-该压缩包已经是构建后的静态网站。不要把源码包直接上传到 Pages 根目录。
-
-## 3. 覆盖仓库
-
-将部署包解压，用其中全部内容覆盖本地 `infinite-mindmap` 仓库。
-
-确认根目录包含：
+等待 GitHub Actions 完成后访问：
 
 ```text
-index.html
-assets/
-sw.js
-.nojekyll
-.github/workflows/pages.yml
+https://9leaa.github.io/infinite-mindmap/?v=18
 ```
 
-然后执行：
-
-```bash
-git status
-git add .
-git commit -m "Rebuild with V17 Excalidraw and PDF.js viewer"
-git push
-```
-
-## 4. GitHub Pages
-
-等待仓库 `Actions` 中 Pages 工作流完成，然后访问：
+## 必须上传
 
 ```text
-https://9leaa.github.io/infinite-mindmap/?v=17
+workers/
+vendor/
+vendor/cmaps/
+vendor/standard_fonts/
+.github/workflows/
 ```
 
-## 5. iPad 更新
+不能只上传 `index.html`。缺少 CMap 或字体资源时，部分 PDF 可能出现文字或元素不完整。
 
-1. 完全关闭所有旧 V15/V16 标签页。
-2. 完全关闭旧的主屏幕 PWA。
-3. 从带 `?v=17` 的地址重新打开。
-4. 第一次启动时等待旧版数据迁移完成。
-5. 不要在未备份时清除浏览器网站数据。
+## iPad 更新步骤
 
-## 6. 源码开发
-
-源码包需要 Node.js 20.19 或更高版本。
-
-```bash
-npm ci
-npm run typecheck
-npm run dev
-```
-
-生产构建：
-
-```bash
-npm run build
-```
-
-构建结果在 `dist/`。
+1. 等待 Pages 部署成功。
+2. 完全关闭旧标签页和旧主屏幕应用。
+3. 重新打开带 `?v=18` 的地址。
+4. 先用测试笔记验证书写、平移和 PDF。
+5. 未完成备份前不要清除网站数据。
