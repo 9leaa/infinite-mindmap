@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V16.1",
+  "name": "无限画布思维导图 V16.2",
   "short_name": "无限画布",
-  "description": "修复 iPad Chrome 悬浮工具栏交互，增加手写画布四周 35% 预渲染。",
+  "description": "修复 iPad 单指平移，使用经典脚本 PDF.js 的连续多页阅读和批注。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

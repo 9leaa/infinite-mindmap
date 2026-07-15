@@ -1,34 +1,40 @@
-# V16.1 GitHub Pages 更新
+# V16.2 GitHub Pages 更新
 
 ## 更新前
 
-先在旧版中执行“备份全部笔记”。
+先执行“备份全部笔记”。
 
-## 覆盖文件
+## 必须完整覆盖
 
-解压完整项目包，将全部内容覆盖到现有仓库。不要只替换 `index.html`。
+使用完整项目包覆盖仓库，尤其要包含：
 
-然后执行：
+```text
+index.html
+sw.js
+vendor/pdf.bundle.js
+vendor/pdf.worker.min.mjs
+```
+
+旧的 `vendor/pdf.min.mjs` 已不再使用。
+
+## Git 命令
 
 ```bash
 git add .
-git commit -m "Update to V16.1 tablet toolbar and ink overscan"
+git commit -m "Update to V16.2 iPad pan and continuous PDF"
 git push
 ```
 
 部署完成后访问：
 
 ```text
-https://9leaa.github.io/infinite-mindmap/?v=16.1
+https://9leaa.github.io/infinite-mindmap/?v=16.2
 ```
 
-## iPad 操作
+## iPad 更新步骤
 
-更新完成后：
-
-1. 完全关闭所有旧 V15/V16 标签页。
-2. 完全关闭从主屏幕打开的旧版应用。
-3. 重新打开带 `?v=16.1` 的地址。
-4. 等页面完成当前笔记初始化后，悬浮工具栏才会出现。
-
-旧标签页可能仍持有 IndexedDB 连接，从而阻止新版数据库打开。
+1. 等待 GitHub Actions 部署成功。
+2. 完全关闭所有旧标签页。
+3. 完全关闭主屏幕安装的旧版应用。
+4. 重新打开带 `?v=16.2` 的地址。
+5. 不要在未备份前清除网站数据。

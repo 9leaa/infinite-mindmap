@@ -1,11 +1,13 @@
-const CACHE_NAME = "mindmap-v16-1";
+const CACHE_NAME = "mindmap-v16-2";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./vendor/pdf.bundle.js",
+  "./vendor/pdf.worker.min.mjs"
 ];
 
 self.addEventListener("install", event => {
