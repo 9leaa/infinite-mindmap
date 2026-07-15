@@ -1,3 +1,0 @@
-Infinite Mindmap V17.0.0
-Canvas: Excalidraw 0.18.1
-PDF: pdfjs-dist 4.10.38
