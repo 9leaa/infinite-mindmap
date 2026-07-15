@@ -1,4 +1,4 @@
-const CACHE_NAME = "mindmap-v16-stable";
+const CACHE_NAME = "mindmap-v16-1";
 
 const CORE_ASSETS = [
   "./",

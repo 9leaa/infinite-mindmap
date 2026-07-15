@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V16",
+  "name": "无限画布思维导图 V16.1",
   "short_name": "无限画布",
-  "description": "增量手写存储、浏览器原生 PDF 快速阅读、按需批注引擎、Apple Pencil 与单指平移的无限画布笔记应用。",
+  "description": "修复 iPad Chrome 悬浮工具栏交互，增加手写画布四周 35% 预渲染。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

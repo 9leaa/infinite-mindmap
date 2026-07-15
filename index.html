@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V16 稳定架构版</title>
+  <title>无限画布思维导图 · V16.1 平板交互与手写预加载版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -4408,6 +4408,57 @@
       display: none !important;
     }
 
+  
+    /* V16.1：工具栏仅在当前笔记完成基础初始化后显示 */
+    body.app-loading .mindmap-floating-toolbar,
+    body.app-loading .pure-emphasis-toolbar {
+      display: none !important;
+    }
+
+    body.app-ready .mindmap-floating-toolbar {
+      pointer-events: auto !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      z-index: 1200 !important;
+      isolation: isolate;
+      transform: translateZ(0);
+      touch-action: manipulation !important;
+    }
+
+    body.app-ready .mindmap-floating-toolbar button,
+    body.app-ready .mindmap-floating-toolbar .mindmap-toolbar-drag {
+      pointer-events: auto !important;
+    }
+
+    body.app-ready .pure-emphasis-toolbar.enabled {
+      pointer-events: auto !important;
+      z-index: 1210 !important;
+      isolation: isolate;
+      transform: translateZ(0);
+    }
+
+    .mindmap-floating-toolbar .mindmap-toolbar-drag,
+    .pure-emphasis-toolbar .pure-emphasis-drag {
+      touch-action: none !important;
+      cursor: grab;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+    }
+
+    .mindmap-floating-toolbar.dragging,
+    .pure-emphasis-toolbar.dragging {
+      cursor: grabbing;
+    }
+
+    .workspace {
+      overflow: hidden;
+    }
+
+    .draw-canvas {
+      max-width: none !important;
+      max-height: none !important;
+    }
+
   </style>
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4415,7 +4466,7 @@
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
 </head>
-<body>
+<body class="app-loading">
   <div class="app">
     <div class="toolbar">
       <div class="toolbar-row toolbar-row-primary">
@@ -5123,6 +5174,9 @@
       const LIBRARY_HANDLE_KEY = "__library_backup__";
 
       let libraryDbPromise = null;
+      let appReady = false;
+      let startupWarningTimer = null;
+      let lastUserActivityAt = performance.now();
       let persistRequested = false;
       let persistDispatchTimer = null;
       let saveIndicatorTimer = null;
@@ -5993,7 +6047,11 @@
             }
           };
 
-          request.onsuccess = () => resolve(request.result);
+          request.onsuccess = () => {
+            const db = request.result;
+            db.onversionchange = () => db.close();
+            resolve(db);
+          };
           request.onerror = () => reject(
             request.error || new Error("无法打开 IndexedDB")
           );
@@ -6686,14 +6744,26 @@
         hydratedPdfAnnotationAssets.add(hydrationKey);
       }
 
+      async function waitForMigrationWindow() {
+        while (
+          userIsInteracting() ||
+          performance.now() - lastUserActivityAt < 2400
+        ) {
+          await new Promise(resolve => setTimeout(resolve, 700));
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
       async function migrateIncrementalStores() {
         let changed = false;
 
         for (const [docId, doc] of Object.entries(
           library.documents || {}
         )) {
+          await waitForMigrationWindow();
           const drawings = Array.isArray(doc.state?.drawings)
-            ? doc.state.drawings.map(normalizeDrawing)
+            ? doc.state.drawings
             : [];
 
           if (
@@ -6707,6 +6777,7 @@
           for (const [assetId, asset] of Object.entries(
             doc.state?.assets || {}
           )) {
+            await waitForMigrationWindow();
             const annotations =
               asset?.pdfAnnotations &&
               typeof asset.pdfAnnotations === "object"
@@ -10791,23 +10862,93 @@
         return Math.max(0.7, stroke.baseWidth * pressureFactor * toolFactor);
       }
 
+      function drawingOverscanRatio() {
+        const configured = Number(
+          library?.settings?.inkOverscanRatio
+        );
+
+        if (Number.isFinite(configured)) {
+          return Math.max(0.1, Math.min(0.6, configured));
+        }
+
+        return isCoarsePointerDevice() ? 0.35 : 0.25;
+      }
+
       function resizeInkCanvas(canvas, context) {
         const width = Math.max(1, workspace.clientWidth);
         const height = Math.max(1, workspace.clientHeight);
-        const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-        const pixelWidth = Math.round(width * dpr);
-        const pixelHeight = Math.round(height * dpr);
+        const useOverscan = canvas === drawCanvas;
+        const ratio = useOverscan ? drawingOverscanRatio() : 0;
+        const overscanX = Math.round(width * ratio);
+        const overscanY = Math.round(height * ratio);
+        const totalWidth = width + overscanX * 2;
+        const totalHeight = height + overscanY * 2;
 
-        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        const dpr = useOverscan && isCoarsePointerDevice()
+          ? 1
+          : Math.min(
+              1.5,
+              Math.max(1, window.devicePixelRatio || 1)
+            );
+
+        const pixelWidth = Math.max(
+          1,
+          Math.round(totalWidth * dpr)
+        );
+        const pixelHeight = Math.max(
+          1,
+          Math.round(totalHeight * dpr)
+        );
+
+        if (
+          canvas.width !== pixelWidth ||
+          canvas.height !== pixelHeight
+        ) {
           canvas.width = pixelWidth;
           canvas.height = pixelHeight;
-          canvas.style.width = `${width}px`;
-          canvas.style.height = `${height}px`;
         }
 
-        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        canvas.style.width = `${totalWidth}px`;
+        canvas.style.height = `${totalHeight}px`;
+        canvas.style.left = `${-overscanX}px`;
+        canvas.style.top = `${-overscanY}px`;
+        canvas.style.right = "auto";
+        canvas.style.bottom = "auto";
+
+        context.setTransform(
+          dpr,
+          0,
+          0,
+          dpr,
+          overscanX * dpr,
+          overscanY * dpr
+        );
+
         drawingCanvasDpr = dpr;
-        return { width, height };
+
+        const viewport = {
+          width,
+          height,
+          overscanX,
+          overscanY,
+          totalWidth,
+          totalHeight
+        };
+
+        if (canvas === drawCanvas) {
+          drawingCanvasViewport = viewport;
+        }
+
+        return viewport;
+      }
+
+      function clearInkCanvas(context, viewport) {
+        context.clearRect(
+          -viewport.overscanX,
+          -viewport.overscanY,
+          viewport.totalWidth,
+          viewport.totalHeight
+        );
       }
 
       function worldToScreenPoint(point) {
@@ -10822,11 +10963,14 @@
         const maxX = Math.max(a.x, b.x);
         const minY = Math.min(a.y, b.y);
         const maxY = Math.max(a.y, b.y);
+        const overscanX = viewport.overscanX || 0;
+        const overscanY = viewport.overscanY || 0;
+
         return !(
-          maxX < -padding ||
-          minX > viewport.width + padding ||
-          maxY < -padding ||
-          minY > viewport.height + padding
+          maxX < -overscanX - padding ||
+          minX > viewport.width + overscanX + padding ||
+          maxY < -overscanY - padding ||
+          minY > viewport.height + overscanY + padding
         );
       }
 
@@ -10864,14 +11008,22 @@
 
         if (viewport && stroke.bounds) {
           const padding = 100 / Math.max(0.2, state.scale);
+          const overscanX = viewport.overscanX || 0;
+          const overscanY = viewport.overscanY || 0;
           const visibleWorld = {
-            left: (-state.panX / state.scale) - padding,
-            top: (-state.panY / state.scale) - padding,
+            left:
+              ((-state.panX - overscanX) / state.scale) -
+              padding,
+            top:
+              ((-state.panY - overscanY) / state.scale) -
+              padding,
             right:
-              ((viewport.width - state.panX) / state.scale) +
+              ((viewport.width + overscanX - state.panX) /
+                state.scale) +
               padding,
             bottom:
-              ((viewport.height - state.panY) / state.scale) +
+              ((viewport.height + overscanY - state.panY) /
+                state.scale) +
               padding
           };
 
@@ -10916,7 +11068,7 @@
       function renderDrawingCanvasNow() {
         drawingCanvasFrame = null;
         const viewport = resizeInkCanvas(drawCanvas, drawContext);
-        drawContext.clearRect(0, 0, viewport.width, viewport.height);
+        clearInkCanvas(drawContext, viewport);
 
         for (const stroke of state.drawings || []) {
           drawStrokeOnCanvas(drawContext, stroke, { viewport });
@@ -10962,7 +11114,7 @@
       function renderLaserStrokeNow() {
         laserRenderFrame = null;
         const viewport = resizeInkCanvas(laserCanvas, laserContext);
-        laserContext.clearRect(0, 0, viewport.width, viewport.height);
+        clearInkCanvas(laserContext, viewport);
         if (laserStroke) {
           drawStrokeOnCanvas(laserContext, laserStroke, {
             laser: true,
@@ -12898,41 +13050,83 @@
         setTimeout(() => toolbar.classList.remove("tool-action-pulse"), 220);
       }
 
+      function invokeToolbarAction(callback, event) {
+        if (!appReady) {
+          statusEl.textContent = "笔记仍在初始化，请稍候";
+          return;
+        }
+        callback(event);
+        pulseToolbar(tabletActionDock);
+      }
+
       function bindImmediateToolbarAction(button, callback) {
-        let suppressClickUntil = 0;
+        let activePointer = null;
+        let lastPointerActivationAt = 0;
 
-        button.addEventListener(
-          "pointerdown",
-          event => {
-            if (event.pointerType !== "touch" && event.pointerType !== "pen") {
-              return;
-            }
+        button.addEventListener("pointerdown", event => {
+          if (
+            event.pointerType !== "touch" &&
+            event.pointerType !== "pen"
+          ) {
+            return;
+          }
 
-            suppressClickUntil = performance.now() + 700;
+          activePointer = {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY
+          };
+          button.classList.add("pure-touch-pressed");
+          event.stopPropagation();
+        });
+
+        button.addEventListener("pointerup", event => {
+          if (!activePointer || activePointer.id !== event.pointerId) {
+            return;
+          }
+
+          const moved = Math.hypot(
+            event.clientX - activePointer.x,
+            event.clientY - activePointer.y
+          );
+          activePointer = null;
+          button.classList.remove("pure-touch-pressed");
+
+          if (moved > 14) return;
+
+          lastPointerActivationAt = performance.now();
+          event.stopPropagation();
+          invokeToolbarAction(callback, event);
+        });
+
+        const cancel = () => {
+          activePointer = null;
+          button.classList.remove("pure-touch-pressed");
+        };
+
+        button.addEventListener("pointercancel", cancel);
+        button.addEventListener("lostpointercapture", cancel);
+
+        button.addEventListener("click", event => {
+          if (performance.now() - lastPointerActivationAt < 550) {
             event.preventDefault();
-            event.stopPropagation();
-            callback(event);
-            pulseToolbar(tabletActionDock);
-          },
-          { capture: true }
-        );
+            return;
+          }
 
-        button.addEventListener(
-          "click",
-          event => {
-            if (performance.now() < suppressClickUntil) {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              return;
-            }
-            callback(event);
-            pulseToolbar(tabletActionDock);
-          },
-          { capture: true }
-        );
+          event.stopPropagation();
+          invokeToolbarAction(callback, event);
+        });
       }
 
       function ensureTabletMindmapToolbarSettings() {
+        if (!library) {
+          return tabletToolbarSettings || {
+            x: 18,
+            y: 118,
+            collapsed: false
+          };
+        }
+
         library.settings = library.settings || {};
         const current = library.settings.tabletMindmapToolbar || {};
         const defaultX = 18;
@@ -13697,11 +13891,7 @@
         updateToolSetting("stamp", { color: pureMarkerColor.value });
       });
       function beginPureToolbarDrag(event) {
-        if (
-          event.target.closest(
-            "button, input, select, label, .pure-tool-settings-popover"
-          )
-        ) return;
+        if (!appReady) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -13716,20 +13906,34 @@
         };
 
         pureEmphasisToolbar.classList.add("dragging");
+
         try {
-          pureEmphasisToolbar.setPointerCapture(event.pointerId);
+          pureEmphasisDrag.setPointerCapture(event.pointerId);
         } catch {
-          // 不影响拖动。
+          // Window 级监听仍可完成拖动。
         }
       }
 
-      pureEmphasisToolbar.addEventListener("pointerdown", beginPureToolbarDrag);
+      pureEmphasisDrag.addEventListener(
+        "pointerdown",
+        beginPureToolbarDrag
+      );
 
-      pureEmphasisToolbar.addEventListener("pointermove", event => {
-        if (!pureToolbarDragState || pureToolbarDragState.pointerId !== event.pointerId) return;
+      const movePureToolbar = event => {
+        if (
+          !pureToolbarDragState ||
+          pureToolbarDragState.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        event.preventDefault();
 
         const settings = ensurePureToolsSettings();
-        const maxX = Math.max(8, window.innerWidth - pureEmphasisToolbar.offsetWidth - 8);
+        const maxX = Math.max(
+          8,
+          window.innerWidth - pureEmphasisToolbar.offsetWidth - 8
+        );
         const maxY = Math.max(
           8,
           window.innerHeight -
@@ -13759,14 +13963,19 @@
         pureEmphasisToolbar.style.left = `${settings.x}px`;
         pureEmphasisToolbar.style.top = `${settings.y}px`;
         positionPureFloatingPanels();
-      });
+      };
 
-      pureEmphasisToolbar.addEventListener("pointerup", event => {
-        if (!pureToolbarDragState || pureToolbarDragState.pointerId !== event.pointerId) return;
+      const finishPureToolbarDrag = event => {
+        if (
+          !pureToolbarDragState ||
+          pureToolbarDragState.pointerId !== event.pointerId
+        ) {
+          return;
+        }
 
         try {
-          if (pureEmphasisToolbar.hasPointerCapture(event.pointerId)) {
-            pureEmphasisToolbar.releasePointerCapture(event.pointerId);
+          if (pureEmphasisDrag.hasPointerCapture(event.pointerId)) {
+            pureEmphasisDrag.releasePointerCapture(event.pointerId);
           }
         } catch {
           // 无需处理。
@@ -13776,53 +13985,74 @@
         pureToolbarDragState = null;
         persistLibrary();
         requestAnimationFrame(() => arrangeFloatingToolbars());
-      });
+      };
 
-      pureEmphasisToolbar.addEventListener("pointercancel", () => {
-        pureEmphasisToolbar.classList.remove("dragging");
-        pureToolbarDragState = null;
+      window.addEventListener("pointermove", movePureToolbar, {
+        passive: false
       });
+      window.addEventListener("pointerup", finishPureToolbarDrag);
+      window.addEventListener("pointercancel", finishPureToolbarDrag);
 
       function bindImmediatePureToolButton(button, tool) {
-        let suppressClickUntil = 0;
+        let activePointer = null;
+        let lastPointerActivationAt = 0;
 
-        button.addEventListener(
-          "pointerdown",
-          event => {
-            if (event.pointerType !== "touch" && event.pointerType !== "pen") {
-              return;
-            }
+        const activate = event => {
+          if (!appReady) return;
+          event?.stopPropagation?.();
+          activateCanvasToolFromUi(tool);
+        };
 
-            suppressClickUntil = performance.now() + 800;
-            event.preventDefault();
-            event.stopPropagation();
+        button.addEventListener("pointerdown", event => {
+          if (
+            event.pointerType !== "touch" &&
+            event.pointerType !== "pen"
+          ) {
+            return;
+          }
 
-            button.classList.add("pure-touch-pressed");
-            activateCanvasToolFromUi(tool);
-          },
-          { capture: true }
-        );
+          activePointer = {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY
+          };
+          button.classList.add("pure-touch-pressed");
+          event.stopPropagation();
+        });
 
-        const clearPressed = () => {
+        button.addEventListener("pointerup", event => {
+          if (!activePointer || activePointer.id !== event.pointerId) {
+            return;
+          }
+
+          const moved = Math.hypot(
+            event.clientX - activePointer.x,
+            event.clientY - activePointer.y
+          );
+          activePointer = null;
+          button.classList.remove("pure-touch-pressed");
+
+          if (moved > 14) return;
+
+          lastPointerActivationAt = performance.now();
+          activate(event);
+        });
+
+        const cancel = () => {
+          activePointer = null;
           button.classList.remove("pure-touch-pressed");
         };
 
-        button.addEventListener("pointerup", clearPressed, { capture: true });
-        button.addEventListener("pointercancel", clearPressed, { capture: true });
-        button.addEventListener("pointerleave", clearPressed, { capture: true });
+        button.addEventListener("pointercancel", cancel);
+        button.addEventListener("lostpointercapture", cancel);
 
-        button.addEventListener(
-          "click",
-          event => {
-            if (performance.now() < suppressClickUntil) {
-              event.preventDefault();
-              event.stopImmediatePropagation();
-              return;
-            }
-            activateCanvasToolFromUi(tool);
-          },
-          { capture: true }
-        );
+        button.addEventListener("click", event => {
+          if (performance.now() - lastPointerActivationAt < 550) {
+            event.preventDefault();
+            return;
+          }
+          activate(event);
+        });
       }
 
       selectToolBtn.addEventListener(
@@ -14112,8 +14342,11 @@
       });
 
       tabletDockDrag.addEventListener("pointerdown", event => {
+        if (!appReady) return;
+
         event.preventDefault();
         event.stopPropagation();
+
         const settings = ensureTabletMindmapToolbarSettings();
         tabletToolbarDragState = {
           pointerId: event.pointerId,
@@ -14122,21 +14355,25 @@
           startX: settings.x,
           startY: settings.y
         };
+
         tabletActionDock.classList.add("dragging");
+
         try {
-          tabletActionDock.setPointerCapture(event.pointerId);
+          tabletDockDrag.setPointerCapture(event.pointerId);
         } catch {
-          // 不影响拖动。
+          // Window 级监听仍可完成拖动。
         }
       });
 
-      tabletActionDock.addEventListener("pointermove", event => {
+      const moveTabletToolbar = event => {
         if (
           !tabletToolbarDragState ||
           tabletToolbarDragState.pointerId !== event.pointerId
         ) {
           return;
         }
+
+        event.preventDefault();
 
         const settings = ensureTabletMindmapToolbarSettings();
         settings.x =
@@ -14147,9 +14384,10 @@
           tabletToolbarDragState.startY +
           event.clientY -
           tabletToolbarDragState.startClientY;
+
         clampTabletToolbarPosition();
         positionTabletMorePanel();
-      });
+      };
 
       const finishTabletToolbarDrag = event => {
         if (
@@ -14159,14 +14397,25 @@
           return;
         }
 
+        try {
+          if (tabletDockDrag.hasPointerCapture(event.pointerId)) {
+            tabletDockDrag.releasePointerCapture(event.pointerId);
+          }
+        } catch {
+          // 无需处理。
+        }
+
         tabletToolbarDragState = null;
         tabletActionDock.classList.remove("dragging");
         persistLibrary();
         requestAnimationFrame(() => arrangeFloatingToolbars());
       };
 
-      tabletActionDock.addEventListener("pointerup", finishTabletToolbarDrag);
-      tabletActionDock.addEventListener("pointercancel", finishTabletToolbarDrag);
+      window.addEventListener("pointermove", moveTabletToolbar, {
+        passive: false
+      });
+      window.addEventListener("pointerup", finishTabletToolbarDrag);
+      window.addEventListener("pointercancel", finishTabletToolbarDrag);
 
       tabletDockCollapseBtn.addEventListener("click", event => {
         event.stopPropagation();
@@ -14987,6 +15236,31 @@
         }
       }
 
+      function markUserActivity() {
+        lastUserActivityAt = performance.now();
+      }
+
+      document.addEventListener("pointerdown", markUserActivity, {
+        capture: true,
+        passive: true
+      });
+      document.addEventListener("pointermove", event => {
+        if (
+          event.buttons ||
+          event.pressure > 0 ||
+          event.pointerType === "touch"
+        ) {
+          markUserActivity();
+        }
+      }, {
+        capture: true,
+        passive: true
+      });
+      document.addEventListener("wheel", markUserActivity, {
+        capture: true,
+        passive: true
+      });
+
       function userIsInteracting() {
         return Boolean(
           currentStroke ||
@@ -15211,16 +15485,39 @@
         }
       }
 
+      startupWarningTimer = setTimeout(() => {
+        if (!appReady) {
+          setBrowserStorageStatus(
+            "仍在打开本地存储。若长时间无响应，请关闭旧版本标签页后刷新。",
+            "warning"
+          );
+        }
+      }, 4500);
+
       await loadState();
-      await migrateIncrementalStores();
-      await migrateEmbeddedBinaryAssets();
+
+      const initialDocument = currentDocument();
+      const embeddedDrawings = Array.isArray(
+        initialDocument?.state?.drawings
+      )
+        ? initialDocument.state.drawings
+        : [];
+
+      if (!embeddedDrawings.length && initialDocument?.id) {
+        try {
+          initialDocument.state.drawings =
+            await loadInkStrokes(initialDocument.id);
+          hydratedInkDocuments.add(initialDocument.id);
+        } catch (error) {
+          console.warn("读取当前画布手写失败", error);
+        }
+      }
+
       state = ensureStateCollections(
         cloneJson(currentDocument().state)
       );
       initializeHistoryForCurrent({ force: true });
-      requestPersistentBrowserStorage().finally(() => {
-        refreshBrowserStorageStatus({ force: true });
-      });
+
       setSidebarVisible(library.settings?.sidebarOpen !== false);
       applyTheme(state.theme);
       applyTransform();
@@ -15230,7 +15527,9 @@
       renderDrawings();
 
       if (state.selectedId) selectedNodeIds.add(state.selectedId);
-      if (state.selectedFreeId) selectedFreeIds.add(state.selectedFreeId);
+      if (state.selectedFreeId) {
+        selectedFreeIds.add(state.selectedFreeId);
+      }
 
       refreshSelectionRendering();
       renderPureTools();
@@ -15238,7 +15537,47 @@
       updateFullscreenButtons();
       setTabletPanMode(false);
       renderTabletMindmapToolbar();
+
+      clearTimeout(startupWarningTimer);
+      appReady = true;
+      document.body.classList.remove("app-loading");
+      document.body.classList.add("app-ready");
+      setBrowserStorageStatus("当前笔记已打开", "ok");
+
       requestAnimationFrame(() => arrangeFloatingToolbars());
+
+      requestPersistentBrowserStorage().finally(() => {
+        refreshBrowserStorageStatus({ force: true });
+      });
+
+      const runBackgroundMigration = async () => {
+        if (
+          userIsInteracting() ||
+          performance.now() - lastUserActivityAt < 5000
+        ) {
+          setTimeout(runBackgroundMigration, 2200);
+          return;
+        }
+
+        setBrowserStorageStatus(
+          "正在后台整理旧版笔迹和附件，不影响当前操作…"
+        );
+
+        try {
+          await migrateIncrementalStores();
+          await new Promise(resolve => setTimeout(resolve, 0));
+          await migrateEmbeddedBinaryAssets();
+          setBrowserStorageStatus("本地数据整理完成", "ok");
+        } catch (error) {
+          console.warn("后台数据整理失败", error);
+          setBrowserStorageStatus(
+            `后台数据整理未完成：${error.message || error}`,
+            "warning"
+          );
+        }
+      };
+
+      setTimeout(runBackgroundMigration, 5200);
 
 
       document.addEventListener("visibilitychange", async () => {
@@ -15265,7 +15604,20 @@
         persistRequested = true;
         flushLibraryPersistence();
       });
-    })();
+    })().catch(error => {
+      console.error("应用初始化失败", error);
+      document.body.classList.remove("app-loading");
+
+      const storage = document.getElementById(
+        "browserStorageStatus"
+      );
+      if (storage) {
+        storage.textContent =
+          `应用初始化失败：${error.message || error}。` +
+          "请关闭其他旧版本标签页后刷新。";
+        storage.classList.add("storage-error");
+      }
+    });
   </script>
   <script>
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
