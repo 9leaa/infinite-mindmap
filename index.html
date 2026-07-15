@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18 自研高性能画布版</title>
+  <title>无限画布思维导图 · V18.1 稳定修复版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -3561,21 +3561,31 @@
 
     .main-shell.pdf-reader-open {
       grid-template-columns:
-        286px minmax(320px, 1fr)
+        286px minmax(0, 1fr)
         minmax(380px, var(--pdf-reader-width));
     }
 
     .main-shell.sidebar-hidden.pdf-reader-open {
       grid-template-columns:
-        minmax(320px, 1fr)
+        minmax(0, 1fr)
         minmax(380px, var(--pdf-reader-width));
     }
 
     body.pure-mode .main-shell.pdf-reader-open,
     body.pure-mode .main-shell.sidebar-hidden.pdf-reader-open {
       grid-template-columns:
-        minmax(300px, 1fr)
+        minmax(0, 1fr)
         minmax(380px, var(--pdf-reader-width)) !important;
+    }
+
+    body.pdf-reader-wide .main-shell.pdf-reader-open {
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(380px, var(--pdf-reader-width)) !important;
+    }
+
+    body.pdf-reader-wide .main-shell.pdf-reader-open .library-sidebar {
+      display: none !important;
     }
 
     .pdf-reader-panel {
@@ -3832,6 +3842,24 @@
       text-align: center;
     }
 
+    .pdf-reader-page-loading[hidden] {
+      display: none !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    .pdf-reader-body.pdf-ink-active {
+      overflow: hidden !important;
+      overscroll-behavior: none !important;
+      touch-action: none !important;
+      scroll-behavior: auto !important;
+    }
+
+    .pdf-reader-annotation-live-canvas.pdf-ink-active {
+      touch-action: none !important;
+      cursor: crosshair;
+    }
+
     .pdf-reader-notes-panel {
       position: absolute;
       left: 12px;
@@ -3978,7 +4006,7 @@
 
       .main-shell.pdf-reader-open {
         grid-template-columns:
-          minmax(280px, 1fr)
+          minmax(0, 1fr)
           minmax(360px, var(--pdf-reader-width));
       }
 
@@ -5699,11 +5727,11 @@
         );
       })();
       const PDFJS_MODULE_URL = new URL(
-        "./vendor/pdf.mjs?v=18",
+        "./vendor/pdf.mjs?v=18.1",
         document.baseURI
       ).href;
       const PDFJS_WORKER_URL = new URL(
-        "./vendor/pdf.worker.mjs?v=18",
+        "./vendor/pdf.worker.mjs?v=18.1",
         document.baseURI
       ).href;
       const PDFJS_CMAP_URL = new URL(
@@ -5724,6 +5752,9 @@
       let pdfReaderTool = "pan";
       let pdfReaderZoom = 1;
       let pdfReaderAnnotationSession = null;
+      let pdfReaderTouchAnnotationSession = null;
+      let pdfReaderEraserPointerId = null;
+      let pdfReaderScrollLock = null;
       let pdfReaderResizeState = null;
       let pdfReaderNotesTimer = null;
       let pdfReaderPageRenders = new Map();
@@ -9629,7 +9660,9 @@
         const current = library.settings.pdfReader || {};
 
         library.settings.pdfReader = {
-          width: Number.isFinite(current.width) ? current.width : 48,
+          width: Number.isFinite(current.width)
+            ? Math.max(32, Math.min(98, current.width))
+            : 48,
           zoom: Number.isFinite(current.zoom) ? current.zoom : 1,
           penColor: current.penColor || "#e11d48",
           highlightColor: current.highlightColor || "#fde047",
@@ -9802,7 +9835,15 @@
 
       function closePdfReader({ preserveAsset = false } = {}) {
         pdfReaderSessionId += 1;
+        if (pdfReaderScrollLock) {
+          unlockPdfReaderScrollForInk(
+            pdfReaderScrollLock.canvas
+          );
+        }
         pdfReaderAnnotationSession = null;
+        pdfReaderTouchAnnotationSession = null;
+        pdfReaderEraserPointerId = null;
+        pdfReaderScrollLock = null;
         revokeNativePdfPreview();
         pdfReaderMode = "reader";
         pdfReaderPanel.classList.remove(
@@ -9813,6 +9854,7 @@
         pdfReaderLoadPromise = null;
         pdfAnnotationModePromise = null;
         setPdfReaderMaximized(false);
+        document.body.classList.remove("pdf-reader-wide");
         pdfRenderQueue = [];
         pdfRenderQueued.clear();
         pdfRenderActiveCount = 0;
@@ -10083,12 +10125,156 @@
         return true;
       }
 
+      function lockPdfReaderScrollForInk(canvas) {
+        if (!pdfReaderScrollLock) {
+          pdfReaderScrollLock = {
+            top: pdfReaderBody.scrollTop,
+            left: pdfReaderBody.scrollLeft,
+            overflow: pdfReaderBody.style.overflow,
+            touchAction: pdfReaderBody.style.touchAction,
+            scrollBehavior: pdfReaderBody.style.scrollBehavior,
+            canvas
+          };
+        }
+
+        pdfReaderBody.classList.add("pdf-ink-active");
+        canvas?.classList.add("pdf-ink-active");
+        document.body.classList.add("pdf-inking-active");
+      }
+
+      function preservePdfReaderScrollPosition() {
+        if (!pdfReaderScrollLock) return;
+        pdfReaderBody.scrollTop = pdfReaderScrollLock.top;
+        pdfReaderBody.scrollLeft = pdfReaderScrollLock.left;
+      }
+
+      function unlockPdfReaderScrollForInk(canvas) {
+        canvas?.classList.remove("pdf-ink-active");
+        pdfReaderBody.classList.remove("pdf-ink-active");
+        document.body.classList.remove("pdf-inking-active");
+
+        const lock = pdfReaderScrollLock;
+        pdfReaderScrollLock = null;
+        if (!lock) return;
+
+        requestAnimationFrame(() => {
+          pdfReaderBody.style.overflow = lock.overflow;
+          pdfReaderBody.style.touchAction = lock.touchAction;
+          pdfReaderBody.style.scrollBehavior = lock.scrollBehavior;
+          pdfReaderBody.scrollTop = lock.top;
+          pdfReaderBody.scrollLeft = lock.left;
+        });
+      }
+
+      function createPdfAnnotationStroke(pageNumber, canvas, point) {
+        if (pdfReaderTool === "eraser") {
+          erasePdfAnnotationAt(pageNumber, point, canvas);
+          return null;
+        }
+
+        const settings = ensurePdfReaderSettings();
+        return {
+          id: uid("pdf-ink"),
+          tool: pdfReaderTool,
+          color:
+            pdfReaderTool === "highlight"
+              ? settings.highlightColor
+              : settings.penColor,
+          width:
+            pdfReaderTool === "highlight"
+              ? settings.highlightWidth
+              : settings.penWidth,
+          pressureEnabled: pdfReaderTool !== "highlight",
+          points: [point]
+        };
+      }
+
+      function appendPdfAnnotationSample(session, sample) {
+        const point = pdfPagePointFromEvent(
+          sample,
+          session.canvas,
+          session.stroke
+        );
+        const previous =
+          session.stroke.points[session.stroke.points.length - 1];
+        const pixelDistance = previous
+          ? Math.hypot(
+              (point.x - previous.x) * session.canvas.clientWidth,
+              (point.y - previous.y) * session.canvas.clientHeight
+            )
+          : Infinity;
+
+        if (!previous || pixelDistance >= 0.35) {
+          session.stroke.points.push(point);
+        }
+      }
+
+      function drawPdfAnnotationSessionIncrement(session) {
+        const context = session.canvas.getContext("2d");
+        if (!context) return;
+        const dpr = Number(session.canvas.dataset.dpr) || 1;
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawPdfAnnotationStroke(
+          context,
+          session.canvas,
+          session.stroke,
+          { startIndex: Math.max(1, session.renderedCount) }
+        );
+        session.renderedCount = session.stroke.points.length;
+      }
+
+      function finishPdfAnnotationSession(session) {
+        if (!session) return;
+        if (session.stroke?.points?.length >= 2) {
+          const asset = currentPdfAsset();
+          if (asset) {
+            pdfAnnotationList(asset, session.pageNumber)
+              .push(session.stroke);
+            const doc = currentDocument();
+            if (doc) {
+              trackIncrementalWrite(
+                () => writePdfAnnotationStroke(
+                  doc.id,
+                  activePdfAssetId,
+                  session.pageNumber,
+                  session.stroke
+                )
+              );
+            }
+          }
+        }
+
+        clearPdfAnnotationLiveCanvas(session.canvas);
+        redrawPdfAnnotationCanvas(session.pageNumber);
+        unlockPdfReaderScrollForInk(session.canvas);
+      }
+
+      function touchSampleAsPdfPointer(touch, event) {
+        return {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          pointerType: "pen",
+          pressure: Number(touch.force) || 0.5,
+          timeStamp: Number(event.timeStamp) || performance.now(),
+          tiltX: 0,
+          tiltY: 0,
+          altitudeAngle: null,
+          azimuthAngle: null
+        };
+      }
+
       function bindPdfAnnotationCanvas(canvas, pageNumber) {
         canvas.style.pointerEvents =
           pdfReaderTool === "pan" ? "none" : "auto";
 
         canvas.addEventListener("pointerdown", event => {
           if (pdfReaderTool === "pan") return;
+          if (
+            event.pointerType === "touch" &&
+            !USE_IOS_TOUCH_PAN_FALLBACK
+          ) {
+            return;
+          }
           if (event.pointerType === "touch") return;
           if (event.pointerType === "mouse" && event.button !== 0) return;
 
@@ -10098,25 +10284,24 @@
           const point = pdfPagePointFromEvent(event, canvas);
 
           if (pdfReaderTool === "eraser") {
+            pdfReaderEraserPointerId = event.pointerId;
+            lockPdfReaderScrollForInk(canvas);
             erasePdfAnnotationAt(pageNumber, point, canvas);
+            preservePdfReaderScrollPosition();
+            try {
+              canvas.setPointerCapture(event.pointerId);
+            } catch {
+              // 不影响擦除。
+            }
             return;
           }
 
-          const settings = ensurePdfReaderSettings();
-          const stroke = {
-            id: uid("pdf-ink"),
-            tool: pdfReaderTool,
-            color:
-              pdfReaderTool === "highlight"
-                ? settings.highlightColor
-                : settings.penColor,
-            width:
-              pdfReaderTool === "highlight"
-                ? settings.highlightWidth
-                : settings.penWidth,
-            pressureEnabled: pdfReaderTool !== "highlight",
-            points: [point]
-          };
+          const stroke = createPdfAnnotationStroke(
+            pageNumber,
+            canvas,
+            point
+          );
+          if (!stroke) return;
 
           pdfReaderAnnotationSession = {
             pointerId: event.pointerId,
@@ -10126,6 +10311,7 @@
             renderedCount: 1
           };
           clearPdfAnnotationLiveCanvas(canvas);
+          lockPdfReaderScrollForInk(canvas);
 
           try {
             canvas.setPointerCapture(event.pointerId);
@@ -10139,85 +10325,171 @@
           if (!session || session.pointerId !== event.pointerId) {
             if (
               pdfReaderTool === "eraser" &&
+              pdfReaderEraserPointerId === event.pointerId &&
               event.pointerType !== "touch" &&
               event.buttons
             ) {
+              event.preventDefault();
+              event.stopPropagation();
+              lockPdfReaderScrollForInk(canvas);
               erasePdfAnnotationAt(
                 pageNumber,
                 pdfPagePointFromEvent(event, canvas),
                 canvas
               );
+              preservePdfReaderScrollPosition();
             }
             return;
           }
 
           event.preventDefault();
           event.stopPropagation();
+          preservePdfReaderScrollPosition();
           const samples =
             typeof event.getCoalescedEvents === "function"
               ? event.getCoalescedEvents()
               : [event];
 
           for (const sample of samples) {
-            const point = pdfPagePointFromEvent(
-              sample,
-              canvas,
-              session.stroke
-            );
-            const previous =
-              session.stroke.points[session.stroke.points.length - 1];
-            const pixelDistance = previous
-              ? Math.hypot(
-                  (point.x - previous.x) * canvas.clientWidth,
-                  (point.y - previous.y) * canvas.clientHeight
-                )
-              : Infinity;
-            if (!previous || pixelDistance >= 0.35) {
-              session.stroke.points.push(point);
-            }
+            appendPdfAnnotationSample(session, sample);
           }
-
-          const context = canvas.getContext("2d");
-          const dpr = Number(canvas.dataset.dpr) || 1;
-          context.setTransform(dpr, 0, 0, dpr, 0, 0);
-          drawPdfAnnotationStroke(context, canvas, session.stroke, {
-            startIndex: Math.max(1, session.renderedCount)
-          });
-          session.renderedCount = session.stroke.points.length;
+          drawPdfAnnotationSessionIncrement(session);
+          preservePdfReaderScrollPosition();
         });
 
-        const finish = event => {
+        const finishPointer = event => {
           const session = pdfReaderAnnotationSession;
-          if (!session || session.pointerId !== event.pointerId) return;
+          if (session && session.pointerId === event.pointerId) {
+            event.preventDefault();
+            event.stopPropagation();
+            pdfReaderAnnotationSession = null;
+            finishPdfAnnotationSession(session);
+            return;
+          }
+
+          if (pdfReaderEraserPointerId === event.pointerId) {
+            event.preventDefault();
+            event.stopPropagation();
+            pdfReaderEraserPointerId = null;
+            unlockPdfReaderScrollForInk(canvas);
+          }
+        };
+
+        canvas.addEventListener("pointerup", finishPointer);
+        canvas.addEventListener("pointercancel", finishPointer);
+        canvas.addEventListener("lostpointercapture", finishPointer);
+
+        canvas.addEventListener(
+          "touchstart",
+          event => {
+            if (
+              pdfReaderTool === "pan" ||
+              pdfReaderAnnotationSession ||
+              pdfReaderTouchAnnotationSession ||
+              event.touches.length !== 1
+            ) {
+              return;
+            }
+
+            const touch = event.touches[0];
+            if (!touchLooksLikeStylus(touch)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            const sample = touchSampleAsPdfPointer(touch, event);
+            const point = pdfPagePointFromEvent(sample, canvas);
+
+            if (pdfReaderTool === "eraser") {
+              pdfReaderTouchAnnotationSession = {
+                identifier: touch.identifier,
+                pageNumber,
+                canvas,
+                stroke: null,
+                renderedCount: 0,
+                eraser: true
+              };
+              lockPdfReaderScrollForInk(canvas);
+              erasePdfAnnotationAt(pageNumber, point, canvas);
+              preservePdfReaderScrollPosition();
+              return;
+            }
+
+            const stroke = createPdfAnnotationStroke(
+              pageNumber,
+              canvas,
+              point
+            );
+            if (!stroke) return;
+
+            pdfReaderTouchAnnotationSession = {
+              identifier: touch.identifier,
+              pageNumber,
+              canvas,
+              stroke,
+              renderedCount: 1
+            };
+            clearPdfAnnotationLiveCanvas(canvas);
+            lockPdfReaderScrollForInk(canvas);
+          },
+          { passive: false }
+        );
+
+        canvas.addEventListener(
+          "touchmove",
+          event => {
+            const session = pdfReaderTouchAnnotationSession;
+            if (!session || session.canvas !== canvas) return;
+
+            const touch = [...event.touches].find(
+              item => item.identifier === session.identifier
+            );
+            if (!touch) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            preservePdfReaderScrollPosition();
+            const sample = touchSampleAsPdfPointer(touch, event);
+            if (session.eraser) {
+              erasePdfAnnotationAt(
+                session.pageNumber,
+                pdfPagePointFromEvent(sample, canvas),
+                canvas
+              );
+            } else {
+              appendPdfAnnotationSample(session, sample);
+              drawPdfAnnotationSessionIncrement(session);
+            }
+            preservePdfReaderScrollPosition();
+          },
+          { passive: false }
+        );
+
+        const finishTouch = event => {
+          const session = pdfReaderTouchAnnotationSession;
+          if (!session || session.canvas !== canvas) return;
+
+          const stillActive = [...event.touches].some(
+            item => item.identifier === session.identifier
+          );
+          if (stillActive) return;
 
           event.preventDefault();
           event.stopPropagation();
-          if (session.stroke.points.length >= 2) {
-            const asset = currentPdfAsset();
-            if (asset) {
-              pdfAnnotationList(asset, pageNumber).push(session.stroke);
-              const doc = currentDocument();
-              if (doc) {
-                trackIncrementalWrite(
-                  () => writePdfAnnotationStroke(
-                    doc.id,
-                    activePdfAssetId,
-                    pageNumber,
-                    session.stroke
-                  )
-                );
-              }
-            }
+          pdfReaderTouchAnnotationSession = null;
+          if (session.eraser) {
+            unlockPdfReaderScrollForInk(session.canvas);
+          } else {
+            finishPdfAnnotationSession(session);
           }
-
-          pdfReaderAnnotationSession = null;
-          clearPdfAnnotationLiveCanvas(canvas);
-          redrawPdfAnnotationCanvas(pageNumber);
         };
 
-        canvas.addEventListener("pointerup", finish);
-        canvas.addEventListener("pointercancel", finish);
-        canvas.addEventListener("lostpointercapture", finish);
+        canvas.addEventListener("touchend", finishTouch, {
+          passive: false
+        });
+        canvas.addEventListener("touchcancel", finishTouch, {
+          passive: false
+        });
+
         canvas.addEventListener("contextmenu", event => event.preventDefault());
         canvas.addEventListener("selectstart", event => event.preventDefault());
       }
@@ -10320,6 +10592,7 @@
         pageEl.dataset.rendering = "true";
         if (!pageEl.querySelector(".pdf-reader-page-canvas")) {
           loading.hidden = false;
+          loading.style.display = "grid";
           loading.textContent = `正在显示第 ${pageNumber} 页…`;
         }
 
@@ -10398,35 +10671,48 @@
 
           if (oldCanvas) oldCanvas.replaceWith(nextCanvas);
           else pageEl.insertBefore(nextCanvas, loading);
-          if (!annotationCanvas.isConnected) {
-            pageEl.insertBefore(annotationCanvas, loading);
-          }
-          if (!liveCanvas.isConnected) {
-            pageEl.insertBefore(liveCanvas, loading);
-          }
 
           pageEl.style.width = `${cssViewport.width}px`;
           pageEl.style.height = `${cssViewport.height}px`;
-          resizePdfAnnotationCanvas(
-            annotationCanvas,
-            cssViewport.width,
-            cssViewport.height
-          );
-          resizePdfAnnotationCanvas(
-            liveCanvas,
-            cssViewport.width,
-            cssViewport.height
-          );
-          redrawPdfAnnotationCanvas(pageNumber);
-          clearPdfAnnotationLiveCanvas(liveCanvas);
-          setPdfReaderTool(pdfReaderTool);
 
+          // PDF 页面本身完成后立即展示。批注层失败不能继续遮住正文。
           pageEl.classList.remove("loading");
           loading.hidden = true;
+          loading.style.display = "none";
           pageEl.dataset.renderKey = renderKey;
           pageEl.dataset.renderQuality = quality;
           pageEl.dataset.rendering = "false";
           performanceDiagnostics.pdfRenders += 1;
+
+          try {
+            if (!annotationCanvas.isConnected) {
+              pageEl.insertBefore(annotationCanvas, loading);
+            }
+            if (!liveCanvas.isConnected) {
+              pageEl.insertBefore(liveCanvas, loading);
+            }
+
+            resizePdfAnnotationCanvas(
+              annotationCanvas,
+              cssViewport.width,
+              cssViewport.height
+            );
+            resizePdfAnnotationCanvas(
+              liveCanvas,
+              cssViewport.width,
+              cssViewport.height
+            );
+            redrawPdfAnnotationCanvas(pageNumber);
+            clearPdfAnnotationLiveCanvas(liveCanvas);
+            setPdfReaderTool(pdfReaderTool);
+            delete pageEl.dataset.annotationError;
+          } catch (annotationError) {
+            pageEl.dataset.annotationError = "true";
+            console.error(
+              `第 ${pageNumber} 页批注层初始化失败`,
+              annotationError
+            );
+          }
 
           if (
             quality === "preview" &&
@@ -10453,7 +10739,12 @@
             console.error("PDF 阅读页渲染失败", error);
             if (!pageEl.querySelector(".pdf-reader-page-canvas")) {
               loading.hidden = false;
+              loading.style.display = "grid";
               loading.textContent = `第 ${pageNumber} 页渲染失败`;
+            } else {
+              loading.hidden = true;
+              loading.style.display = "none";
+              pageEl.classList.remove("loading");
             }
           }
         } finally {
@@ -10548,6 +10839,7 @@
                   );
                   if (loading) {
                     loading.hidden = false;
+                    loading.style.display = "grid";
                     loading.textContent =
                       `第 ${pageNumber} 页已释放，将在接近时恢复`;
                   }
@@ -10764,6 +11056,10 @@
         mainShell.style.setProperty(
           "--pdf-reader-width",
           `${settings.width}vw`
+        );
+        document.body.classList.toggle(
+          "pdf-reader-wide",
+          settings.width >= 82
         );
         pdfReaderPanel.setAttribute("aria-hidden", "false");
         setPdfReaderMaximized(false);
@@ -13173,8 +13469,8 @@
             id => id !== completedStroke.id
           );
 
-          commitInkStrokeToTiles(completedStroke);
           currentStroke = null;
+          commitInkStrokeToTiles(completedStroke);
           clearLiveInkCanvas();
           document.body.classList.remove("inking-active");
 
@@ -13341,11 +13637,28 @@
         return node;
       }
 
+      function addRootNodeAtViewportCenter() {
+        const rect = workspace.getBoundingClientRect();
+        const center = screenToWorld(
+          rect.left + workspace.clientWidth / 2,
+          rect.top + workspace.clientHeight / 2
+        );
+        const node = addNodeAt(
+          center.x - 115,
+          center.y - 45,
+          null,
+          "新节点",
+          "在这里输入内容"
+        );
+        focusTitle(node.id);
+        return node;
+      }
+
       function focusTitle(nodeId) {
         requestAnimationFrame(() => {
           const title = document.querySelector(`.node[data-id="${CSS.escape(nodeId)}"] .node-title`);
           if (!title) return;
-          editNodeTitle(node.id, { selectAll: true });
+          editNodeTitle(nodeId, { selectAll: true });
           const range = document.createRange();
           range.selectNodeContents(title);
           const selection = window.getSelection();
@@ -13558,13 +13871,17 @@
 
         child.parentId = parent.id;
         child.branchHidden = false;
-        state.connectSourceId = null;
-        state.connectMode = false;
-        connectBtn.classList.remove("active");
-        workspace.classList.remove("connecting");
+
+        // 保留父节点和连接模式，允许一个父节点连续指向多个子节点。
+        state.connectSourceId = parent.id;
+        state.connectMode = true;
+        connectBtn.classList.add("active");
+        workspace.classList.add("connecting");
         state.selectedId = child.id;
         state.selectedFreeId = null;
-        statusEl.textContent = "节点连接完成";
+        statusEl.textContent =
+          `已连接“${parent.title || "父节点"}” → ` +
+          `“${child.title || "子节点"}”；可继续点击其他节点`;
         autosave();
         renderNodes();
       }
@@ -14643,14 +14960,7 @@
       }
 
       addNodeBtn.addEventListener("click", () => {
-        if (state.selectedId) {
-          addChildNode(state.selectedId);
-          return;
-        }
-        const rect = workspace.getBoundingClientRect();
-        const center = screenToWorld(rect.left + workspace.clientWidth / 2, rect.top + workspace.clientHeight / 2);
-        const node = addNodeAt(center.x - 115, center.y - 45, null, "新节点", "在这里输入内容");
-        focusTitle(node.id);
+        addRootNodeAtViewportCenter();
       });
 
       addFreeTextBtn.addEventListener("click", () => {
@@ -15576,7 +15886,7 @@
         }
       });
 
-      pdfReaderResizeHandle.addEventListener("pointermove", event => {
+      const movePdfReaderResize = event => {
         if (
           !pdfReaderResizeState ||
           pdfReaderResizeState.pointerId !== event.pointerId
@@ -15584,18 +15894,29 @@
           return;
         }
 
+        event.preventDefault();
         const nextWidth =
           pdfReaderResizeState.startWidthPx +
           pdfReaderResizeState.startX -
           event.clientX;
         const minWidth = Math.min(380, window.innerWidth * 0.42);
-        const maxWidth = Math.max(minWidth, window.innerWidth * 0.72);
-        const clamped = Math.max(minWidth, Math.min(maxWidth, nextWidth));
-        const vw = (clamped / window.innerWidth) * 100;
+        const maxWidth = Math.max(
+          minWidth,
+          window.innerWidth - 8
+        );
+        const clamped = Math.max(
+          minWidth,
+          Math.min(maxWidth, nextWidth)
+        );
+        const vw = Math.max(
+          32,
+          Math.min(98, (clamped / window.innerWidth) * 100)
+        );
 
         ensurePdfReaderSettings().width = vw;
         mainShell.style.setProperty("--pdf-reader-width", `${vw}vw`);
-      });
+        document.body.classList.toggle("pdf-reader-wide", vw >= 82);
+      };
 
       const finishPdfReaderResize = event => {
         if (
@@ -15615,14 +15936,11 @@
         });
       };
 
-      pdfReaderResizeHandle.addEventListener(
-        "pointerup",
-        finishPdfReaderResize
-      );
-      pdfReaderResizeHandle.addEventListener(
-        "pointercancel",
-        finishPdfReaderResize
-      );
+      window.addEventListener("pointermove", movePdfReaderResize, {
+        passive: false
+      });
+      window.addEventListener("pointerup", finishPdfReaderResize);
+      window.addEventListener("pointercancel", finishPdfReaderResize);
 
       fullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
       tabletFullscreenBtn.addEventListener("click", toggleApplicationFullscreen);
@@ -15754,15 +16072,21 @@
 
       bindImmediateToolbarAction(tabletAddNodeBtn, () => {
         setTabletPanMode(false);
-        addNodeBtn.click();
+        addRootNodeAtViewportCenter();
+        statusEl.textContent = "已创建独立节点";
         closeTabletPanels();
       });
 
       bindImmediateToolbarAction(tabletAddChildBtn, () => {
         setTabletPanMode(false);
         const node = selectedTabletNode();
-        if (node) addChildNode(node.id);
-        else addNodeBtn.click();
+        if (node) {
+          addChildNode(node.id);
+          statusEl.textContent =
+            `已为“${node.title || "当前节点"}”添加子节点`;
+        } else {
+          statusEl.textContent = "请先选择一个父节点，再添加子节点";
+        }
         closeTabletPanels();
       });
 
