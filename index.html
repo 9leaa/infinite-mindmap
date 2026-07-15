@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V15.8 Blob 存储与极速手写版</title>
+  <title>无限画布思维导图 · V16 稳定架构版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -4283,6 +4283,131 @@
       pointer-events: none;
     }
 
+  
+    /* V15.9：浏览器原生 PDF 快速预览 */
+    .pdf-native-preview-shell {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: #dfe3e8;
+    }
+
+    .pdf-native-preview-frame {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      background: white;
+    }
+
+    .pdf-native-preview-status {
+      min-height: 35px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 12px;
+      border-top: 1px solid rgba(100, 116, 139, 0.24);
+      background: color-mix(in srgb, var(--panel-bg) 95%, transparent);
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .pdf-native-preview-status.error {
+      color: #b45309;
+    }
+
+    body[data-theme="dark"] .pdf-native-preview-shell {
+      background: #20242b;
+    }
+
+    .pdf-reader-body.native-preview-active {
+      overflow: hidden !important;
+      padding: 0 !important;
+    }
+
+  
+    /* V16：稳定保存状态与明确 PDF 双模式 */
+    .save-state-indicator {
+      position: fixed;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 610;
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel-bg) 93%, transparent);
+      color: var(--muted);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .save-state-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    .save-state-indicator.pending .save-state-dot {
+      background: #f59e0b;
+    }
+
+    .save-state-indicator.saving .save-state-dot {
+      background: #3b82f6;
+      animation: saveStatePulse 0.8s ease-in-out infinite alternate;
+    }
+
+    .save-state-indicator.error .save-state-dot {
+      background: #ef4444;
+    }
+
+    @keyframes saveStatePulse {
+      from { opacity: 0.35; }
+      to { opacity: 1; }
+    }
+
+    .pdf-reader-toolbar #pdfReaderFastModeBtn,
+    .pdf-reader-toolbar #pdfReaderAnnotateModeBtn {
+      min-width: 68px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .pdf-reader-toolbar.pdf-native-mode
+      :is(#pdfReaderPanBtn, #pdfReaderPenBtn, #pdfReaderHighlightBtn,
+          #pdfReaderEraserBtn, .pdf-reader-color, .pdf-reader-width,
+          #pdfReaderZoomOutBtn, #pdfReaderZoomInBtn, #pdfReaderFitWidthBtn,
+          #pdfReaderZoomLabel) {
+      opacity: 0.42;
+      pointer-events: none;
+    }
+
+    .pdf-native-preview-status a {
+      margin-left: 7px;
+      color: var(--primary);
+      font-weight: 700;
+      text-decoration: none;
+      pointer-events: auto;
+    }
+
+  
+    .pdf-reader-panel.native-mode .pdf-reader-progress-rail,
+    .pdf-reader-panel.native-mode .pdf-reader-zoom-rail,
+    .pdf-reader-panel.native-mode .pdf-reader-zoom-toast {
+      display: none !important;
+    }
+
   </style>
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4567,6 +4692,11 @@
       </div>
 
       <div id="pasteToast" class="paste-toast" aria-live="polite"></div>
+        <div id="saveStateIndicator" class="save-state-indicator"
+          aria-live="polite">
+          <span class="save-state-dot"></span>
+          <span id="saveStateIndicatorText">已保存</span>
+        </div>
         <div id="status" class="status">未选择节点</div>
       </div>
 
@@ -4581,6 +4711,10 @@
           </div>
 
           <div class="pdf-reader-toolbar">
+            <button id="pdfReaderFastModeBtn" type="button"
+              title="浏览器原生快速阅读">快速阅读</button>
+            <button id="pdfReaderAnnotateModeBtn" type="button"
+              title="启动可书写批注模式">批注模式</button>
             <button id="pdfReaderPanBtn" type="button" title="手指滚动阅读">✋</button>
             <button id="pdfReaderPenBtn" type="button" title="钢笔批注">✎</button>
             <button id="pdfReaderHighlightBtn" type="button" title="荧光笔划重点">▰</button>
@@ -4957,9 +5091,11 @@
       const STORAGE_KEY = "infinite-mindmap-library-v15";
       const OLD_LIBRARY_STORAGE_KEY_V14_1 = "infinite-mindmap-library-v14-1";
       const LIBRARY_DB_NAME = "infinite-mindmap-library-db";
-      const LIBRARY_DB_VERSION = 2;
+      const LIBRARY_DB_VERSION = 4;
       const LIBRARY_STORE_NAME = "library";
       const BINARY_ASSET_STORE_NAME = "binary-assets";
+      const INK_STROKE_STORE_NAME = "ink-strokes";
+      const PDF_ANNOTATION_STORE_NAME = "pdf-annotations";
       const LIBRARY_RECORD_KEY = "main";
       const OLD_LIBRARY_STORAGE_KEY_V14 = "infinite-mindmap-library-v14";
       const OLD_LIBRARY_STORAGE_KEY_V13 = "infinite-mindmap-library-v13";
@@ -4988,6 +5124,13 @@
 
       let libraryDbPromise = null;
       let persistRequested = false;
+      let persistDispatchTimer = null;
+      let saveIndicatorTimer = null;
+      const pendingIncrementalWrites = new Set();
+      let incrementalWriteChain = Promise.resolve();
+      const hydratedInkDocuments = new Set();
+      const hydratedPdfAnnotationAssets = new Set();
+      const inkHistoryByDocument = new Map();
       let persistRunning = false;
       let lastStorageEstimateAt = 0;
 
@@ -5003,6 +5146,10 @@
       const pdfReaderTitle = document.getElementById("pdfReaderTitle");
       const pdfReaderPageStatus = document.getElementById("pdfReaderPageStatus");
       const pdfReaderBody = document.getElementById("pdfReaderBody");
+      const pdfReaderFastModeBtn =
+        document.getElementById("pdfReaderFastModeBtn");
+      const pdfReaderAnnotateModeBtn =
+        document.getElementById("pdfReaderAnnotateModeBtn");
       const pdfReaderPanBtn = document.getElementById("pdfReaderPanBtn");
       const pdfReaderPenBtn = document.getElementById("pdfReaderPenBtn");
       const pdfReaderHighlightBtn = document.getElementById("pdfReaderHighlightBtn");
@@ -5057,6 +5204,9 @@
       const toolPreview = document.getElementById("toolPreview");
       const zoomLabel = document.getElementById("zoomLabel");
       const statusEl = document.getElementById("status");
+      const saveStateIndicator = document.getElementById("saveStateIndicator");
+      const saveStateIndicatorText =
+        document.getElementById("saveStateIndicatorText");
       const pasteToast = document.getElementById("pasteToast");
       const contextMenu = document.getElementById("contextMenu");
       const branchPanel = document.getElementById("branchPanel");
@@ -5235,10 +5385,11 @@
       let laserStroke = null;
       let laserClearTimer = null;
       let eraserChanged = false;
+      let eraserBeforeMap = null;
+      let eraserBeforeOrder = null;
       let eraserPointerId = null;
       let eraserPreviousPoint = null;
       let eraserRenderFrame = null;
-      let touchEventPanState = null;
       let drawingTouchPanState = null;
       let fastInkPanState = null;
       let tabletPanMode = false;
@@ -5262,15 +5413,20 @@
       const SINGLE_FINGER_PAN_ARM_DELAY_MS = 0;
       const SINGLE_FINGER_PAN_MAX_CONTACT = 48;
       const SINGLE_FINGER_PAN_CANCEL_CONTACT = 64;
-      const PDFJS_LOCAL_MODULE_URL = "./vendor/pdf.min.mjs";
-      const PDFJS_LOCAL_WORKER_URL = "./vendor/pdf.worker.min.mjs";
+      const PDFJS_LOCAL_MODULE_URL = new URL(
+        "./vendor/pdf.min.mjs",
+        document.baseURI
+      ).href;
+      const PDFJS_LOCAL_WORKER_URL = new URL(
+        "./vendor/pdf.worker.min.mjs",
+        document.baseURI
+      ).href;
       const PDFJS_MODULE_URL =
         "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
       const PDFJS_WORKER_URL =
         "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
       let pdfJsPromise = null;
       const pdfDocumentCache = new Map();
-      const pdfByteCache = new Map();
       let pdfRenderSchedule = null;
 
       let activePdfAssetId = null;
@@ -5282,6 +5438,10 @@
       let pdfReaderResizeState = null;
       let pdfReaderNotesTimer = null;
       let pdfReaderPageRenders = new Map();
+      let activeNativePdfUrl = null;
+      let pdfNativePreviewActive = false;
+      let pdfReaderMode = "native";
+      let pdfAnnotationModePromise = null;
       let pdfRenderQueue = [];
       const pdfRenderQueued = new Set();
       let pdfRenderActiveCount = 0;
@@ -5292,12 +5452,6 @@
       let pdfReaderScrollFrame = null;
       let pdfZoomToastTimer = null;
       let pdfReaderMaximized = false;
-
-      const activePenContacts = new Map();
-      const lastPenContactByZone = {
-        workspace: null,
-        pdf: null
-      };
 
       let lastCanvasPointer = null;
       let toastTimer = null;
@@ -5310,6 +5464,7 @@
       let pureModeToastTimer = null;
       let branchParentId = null;
       let gestureState = null;
+      let wheelPanEndTimer = null;
       let selectionBoxState = null;
       const selectedNodeIds = new Set();
       const selectedFreeIds = new Set();
@@ -5431,7 +5586,6 @@
         return {
           nodes: state.nodes.map(normalizeNode),
           freeItems: (state.freeItems || []).map(normalizeFreeItem),
-          drawings: (state.drawings || []).map(normalizeDrawing),
           theme: state.theme || "light"
         };
       }
@@ -5450,7 +5604,9 @@
             undo: [],
             redo: [],
             current: historySnapshotString(),
-            dirty: false
+            dirty: false,
+            dirtyAt: 0,
+            lastAt: 0
           };
           historyByDocument.set(doc.id, history);
         }
@@ -5466,19 +5622,164 @@
             undo: [],
             redo: [],
             current: historySnapshotString(),
-            dirty: false
+            dirty: false,
+            dirtyAt: 0,
+            lastAt: 0
           });
         }
         updateHistoryButtons();
       }
 
+      function currentInkHistory() {
+        const doc = currentDocument();
+        if (!doc) return null;
+
+        let history = inkHistoryByDocument.get(doc.id);
+        if (!history) {
+          history = {
+            undo: [],
+            redo: []
+          };
+          inkHistoryByDocument.set(doc.id, history);
+        }
+
+        return history;
+      }
+
+      function cloneDrawingForHistory(stroke) {
+        return normalizeDrawing(stroke);
+      }
+
+      function pushInkHistoryAction(action) {
+        const history = currentInkHistory();
+        if (!history) return;
+
+        history.undo.push({
+          ...action,
+          added: [...(action.added || [])],
+          removed: [...(action.removed || [])],
+          beforeOrder: [...(action.beforeOrder || [])],
+          afterOrder: [...(action.afterOrder || [])],
+          at: Number(action.at) || Date.now()
+        });
+        history.redo = [];
+
+        while (history.undo.length > 80) {
+          history.undo.shift();
+        }
+
+        updateHistoryButtons();
+      }
+
+      function reorderDrawingsByIds(order) {
+        const map = new Map(
+          (state.drawings || []).map(stroke => [stroke.id, stroke])
+        );
+        const next = [];
+
+        for (const id of order || []) {
+          const stroke = map.get(id);
+          if (!stroke) continue;
+          next.push(stroke);
+          map.delete(id);
+        }
+
+        next.push(...map.values());
+        state.drawings = next;
+      }
+
+      function persistInkDiff({ remove = [], add = [] }) {
+        const doc = currentDocument();
+        if (!doc) return;
+
+        for (const stroke of remove) {
+          trackIncrementalWrite(
+            () => deleteInkStroke(doc.id, stroke.id)
+          );
+        }
+
+        for (const stroke of add) {
+          trackIncrementalWrite(
+            () => writeInkStroke(doc.id, stroke)
+          );
+        }
+      }
+
+      function applyInkHistoryAction(action, direction) {
+        const undoing = direction === "undo";
+        const remove = undoing
+          ? action.added || []
+          : action.removed || [];
+        const add = undoing
+          ? action.removed || []
+          : action.added || [];
+        const order = undoing
+          ? action.beforeOrder
+          : action.afterOrder;
+
+        const removeIds = new Set(remove.map(stroke => stroke.id));
+        state.drawings = (state.drawings || []).filter(
+          stroke => !removeIds.has(stroke.id)
+        );
+
+        const existing = new Set(
+          state.drawings.map(stroke => stroke.id)
+        );
+        for (const stroke of add) {
+          if (existing.has(stroke.id)) continue;
+          state.drawings.push(cloneDrawingForHistory(stroke));
+          existing.add(stroke.id);
+        }
+
+        reorderDrawingsByIds(order);
+        renderDrawings();
+        persistInkDiff({ remove, add });
+
+        const doc = currentDocument();
+        if (doc) {
+          doc.state = serializeCurrentState();
+          doc.updatedAt = nowIso();
+        }
+        persistLibrary();
+      }
+
+      function undoInkHistory() {
+        const history = currentInkHistory();
+        if (!history?.undo.length) return false;
+
+        const action = history.undo.pop();
+        history.redo.push(action);
+        applyInkHistoryAction(action, "undo");
+        statusEl.textContent = "已撤销手写操作";
+        updateHistoryButtons();
+        return true;
+      }
+
+      function redoInkHistory() {
+        const history = currentInkHistory();
+        if (!history?.redo.length) return false;
+
+        const action = history.redo.pop();
+        history.undo.push(action);
+        applyInkHistoryAction(action, "redo");
+        statusEl.textContent = "已重做手写操作";
+        updateHistoryButtons();
+        return true;
+      }
+
       function updateHistoryButtons() {
         const history = currentHistory();
+        const inkHistory = currentInkHistory();
         const hasUncommittedChange = Boolean(history?.dirty);
 
         undoBtn.disabled =
-          !history || (history.undo.length === 0 && !hasUncommittedChange);
-        redoBtn.disabled = !history || history.redo.length === 0;
+          !hasUncommittedChange &&
+          !(history?.undo?.length) &&
+          !(inkHistory?.undo?.length);
+
+        redoBtn.disabled =
+          !(history?.redo?.length) &&
+          !(inkHistory?.redo?.length);
       }
 
       function trimHistory(history) {
@@ -5503,10 +5804,15 @@
       function commitHistory() {
         if (historySuspended) return;
         const history = currentHistory();
-        if (!history) return;
+        if (!history || !history.dirty) {
+          updateHistoryButtons();
+          return;
+        }
 
         const next = historySnapshotString();
+        const actionAt = history.dirtyAt || Date.now();
         history.dirty = false;
+        history.dirtyAt = 0;
 
         if (next === history.current) {
           updateHistoryButtons();
@@ -5515,6 +5821,7 @@
 
         history.undo.push(history.current);
         history.current = next;
+        history.lastAt = actionAt;
         history.redo = [];
         trimHistory(history);
         updateHistoryButtons();
@@ -5532,9 +5839,7 @@
         state.freeItems = Array.isArray(parsed.freeItems)
           ? parsed.freeItems.map(normalizeFreeItem)
           : [];
-        state.drawings = Array.isArray(parsed.drawings)
-          ? parsed.drawings.map(normalizeDrawing)
-          : [];
+        state.drawings = state.drawings || [];
         state.theme = parsed.theme || state.theme || "light";
         selectedNodeIds.clear();
         selectedFreeIds.clear();
@@ -5561,37 +5866,67 @@
       }
 
       function undoHistory() {
-        if (currentTextEditor) closeCurrentTextEditor({ commit: true });
+        if (currentTextEditor) {
+          closeCurrentTextEditor({ commit: true });
+        }
         clearTimeout(autosaveTimer);
-        commitHistory();
 
-        const history = currentHistory();
-        if (!history || !history.undo.length) {
+        const structural = currentHistory();
+        if (structural?.dirty) commitHistory();
+
+        const ink = currentInkHistory();
+        const inkAt = ink?.undo?.length
+          ? ink.undo[ink.undo.length - 1].at
+          : -1;
+        const structuralAt = structural?.undo?.length
+          ? structural.lastAt || 0
+          : -1;
+
+        if (inkAt >= structuralAt && undoInkHistory()) {
+          return;
+        }
+
+        if (!structural || !structural.undo.length) {
+          if (undoInkHistory()) return;
           statusEl.textContent = "没有可以撤销的操作";
           return;
         }
 
-        const previous = history.undo.pop();
-        history.redo.push(history.current);
-        history.current = previous;
+        const previous = structural.undo.pop();
+        structural.redo.push(structural.current);
+        structural.current = previous;
         applyHistorySnapshot(previous);
         statusEl.textContent = "已撤销";
       }
 
       function redoHistory() {
-        if (currentTextEditor) closeCurrentTextEditor({ commit: true });
+        if (currentTextEditor) {
+          closeCurrentTextEditor({ commit: true });
+        }
         clearTimeout(autosaveTimer);
-        commitHistory();
 
-        const history = currentHistory();
-        if (!history || !history.redo.length) {
+        const structural = currentHistory();
+        const ink = currentInkHistory();
+        const inkAt = ink?.redo?.length
+          ? ink.redo[ink.redo.length - 1].at
+          : -1;
+        const structuralAt = structural?.redo?.length
+          ? structural.lastAt || 0
+          : -1;
+
+        if (inkAt >= structuralAt && redoInkHistory()) {
+          return;
+        }
+
+        if (!structural || !structural.redo.length) {
+          if (redoInkHistory()) return;
           statusEl.textContent = "没有可以重做的操作";
           return;
         }
 
-        const next = history.redo.pop();
-        history.undo.push(history.current);
-        history.current = next;
+        const next = structural.redo.pop();
+        structural.undo.push(structural.current);
+        structural.current = next;
         applyHistorySnapshot(next);
         statusEl.textContent = "已重做";
       }
@@ -5634,6 +5969,27 @@
             }
             if (!db.objectStoreNames.contains(BINARY_ASSET_STORE_NAME)) {
               db.createObjectStore(BINARY_ASSET_STORE_NAME);
+            }
+
+            if (!db.objectStoreNames.contains(INK_STROKE_STORE_NAME)) {
+              const inkStore = db.createObjectStore(
+                INK_STROKE_STORE_NAME,
+                { keyPath: "key" }
+              );
+              inkStore.createIndex("docId", "docId", { unique: false });
+            }
+
+            if (!db.objectStoreNames.contains(PDF_ANNOTATION_STORE_NAME)) {
+              const annotationStore = db.createObjectStore(
+                PDF_ANNOTATION_STORE_NAME,
+                { keyPath: "key" }
+              );
+              annotationStore.createIndex("docId", "docId", { unique: false });
+              annotationStore.createIndex(
+                "assetId",
+                "assetId",
+                { unique: false }
+              );
             }
           };
 
@@ -5720,15 +6076,49 @@
 
       async function deleteBinaryAsset(assetId) {
         const db = await openLibraryDatabase();
+
         return new Promise((resolve, reject) => {
           const transaction = db.transaction(
             BINARY_ASSET_STORE_NAME,
             "readwrite"
           );
-          transaction.objectStore(BINARY_ASSET_STORE_NAME).delete(assetId);
+          transaction
+            .objectStore(BINARY_ASSET_STORE_NAME)
+            .delete(assetId);
+
           transaction.oncomplete = () => resolve(true);
           transaction.onerror = () => reject(transaction.error);
         });
+      }
+
+      async function garbageCollectBinaryAssets() {
+        const referenced = new Set();
+
+        for (const doc of Object.values(library.documents || {})) {
+          for (const assetId of Object.keys(doc.state?.assets || {})) {
+            referenced.add(assetId);
+          }
+        }
+
+        const db = await openLibraryDatabase();
+        const keys = await new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            BINARY_ASSET_STORE_NAME,
+            "readonly"
+          );
+          const request = transaction
+            .objectStore(BINARY_ASSET_STORE_NAME)
+            .getAllKeys();
+
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = () => reject(request.error);
+        });
+
+        for (const key of keys) {
+          if (!referenced.has(key)) {
+            await deleteBinaryAsset(key);
+          }
+        }
       }
 
       async function dataUrlToBlobAsync(dataUrl) {
@@ -5830,25 +6220,523 @@
       }
 
       async function materializeAssetsForExport(sourceLibrary) {
+        await awaitPendingIncrementalWrites();
         const exported = cloneJson(sourceLibrary);
 
-        for (const doc of Object.values(exported.documents || {})) {
+        for (const [docId, doc] of Object.entries(
+          exported.documents || {}
+        )) {
+          const sourceDoc = library.documents?.[docId];
+          const isCurrent = docId === library.currentDocumentId;
+
+          if (isCurrent) {
+            doc.state.drawings = (state.drawings || []).map(
+              cloneDrawingForHistory
+            );
+          } else if (
+            sourceDoc?.state?.drawings?.length &&
+            hydratedInkDocuments.has(docId)
+          ) {
+            doc.state.drawings = sourceDoc.state.drawings.map(
+              cloneDrawingForHistory
+            );
+          } else {
+            doc.state.drawings = await loadInkStrokes(docId);
+          }
+
           const assets = doc.state?.assets || {};
 
           for (const [assetId, asset] of Object.entries(assets)) {
-            if (
-              asset?.dataUrl ||
-              !["pdf", "office"].includes(asset?.type)
-            ) {
-              continue;
+            if (asset?.type === "pdf") {
+              asset.pdfAnnotations = await loadPdfAnnotations(
+                docId,
+                assetId
+              );
             }
 
-            const blob = await readBinaryAsset(assetId);
-            if (blob) asset.dataUrl = await blobToDataUrl(blob);
+            if (
+              !asset?.dataUrl &&
+              ["pdf", "office"].includes(asset?.type)
+            ) {
+              const blob = await readBinaryAsset(assetId);
+              if (blob) asset.dataUrl = await blobToDataUrl(blob);
+            }
           }
         }
 
         return exported;
+      }
+
+      function trackIncrementalWrite(operation) {
+        const run = typeof operation === "function"
+          ? operation
+          : () => operation;
+
+        const promise = incrementalWriteChain
+          .catch(() => {
+            // 前一条失败不阻塞后续保存。
+          })
+          .then(run);
+
+        incrementalWriteChain = promise;
+        pendingIncrementalWrites.add(promise);
+        setSaveIndicator("saving", "正在保存");
+
+        promise
+          .then(() => {
+            if (pendingIncrementalWrites.size === 1) {
+              setSaveIndicator("saved", "已保存");
+            }
+          })
+          .catch(error => {
+            console.error("增量保存失败", error);
+            setSaveIndicator("error", "增量保存失败");
+          })
+          .finally(() => {
+            pendingIncrementalWrites.delete(promise);
+          });
+
+        return promise;
+      }
+
+      async function awaitPendingIncrementalWrites() {
+        await incrementalWriteChain.catch(() => {
+          // 错误已由状态提示显示。
+        });
+      }
+
+      function idbRequestPromise(request, fallbackMessage) {
+        return new Promise((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(
+            request.error || new Error(fallbackMessage)
+          );
+        });
+      }
+
+      async function writeInkStroke(docId, stroke) {
+        const db = await openLibraryDatabase();
+        const currentDocId = currentDocument()?.id;
+        const order =
+          currentDocId === docId
+            ? Math.max(
+                0,
+                (state.drawings || []).findIndex(
+                  candidate => candidate.id === stroke.id
+                )
+              )
+            : Number(stroke.order) || 0;
+
+        const record = {
+          key: `${docId}:${stroke.id}`,
+          docId,
+          strokeId: stroke.id,
+          stroke,
+          order,
+          updatedAt: Date.now()
+        };
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            INK_STROKE_STORE_NAME,
+            "readwrite"
+          );
+          transaction
+            .objectStore(INK_STROKE_STORE_NAME)
+            .put(record);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("保存笔迹失败")
+          );
+          transaction.onabort = () => reject(
+            transaction.error || new Error("笔迹保存被中止")
+          );
+        });
+      }
+
+      async function deleteInkStroke(docId, strokeId) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            INK_STROKE_STORE_NAME,
+            "readwrite"
+          );
+          transaction
+            .objectStore(INK_STROKE_STORE_NAME)
+            .delete(`${docId}:${strokeId}`);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("删除笔迹失败")
+          );
+        });
+      }
+
+      async function loadInkStrokes(docId) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            INK_STROKE_STORE_NAME,
+            "readonly"
+          );
+          const store = transaction.objectStore(INK_STROKE_STORE_NAME);
+          const index = store.index("docId");
+          const request = index.getAll(IDBKeyRange.only(docId));
+
+          request.onsuccess = () => {
+            const records = request.result || [];
+            records.sort(
+              (a, b) =>
+                Number(a.order || 0) - Number(b.order || 0) ||
+                Number(a.updatedAt || 0) -
+                  Number(b.updatedAt || 0)
+            );
+            resolve(records.map(record => normalizeDrawing(record.stroke)));
+          };
+          request.onerror = () => reject(
+            request.error || new Error("读取笔迹失败")
+          );
+        });
+      }
+
+      async function replaceDocumentInk(docId, strokes) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            INK_STROKE_STORE_NAME,
+            "readwrite"
+          );
+          const store = transaction.objectStore(INK_STROKE_STORE_NAME);
+          const index = store.index("docId");
+          const cursorRequest = index.openKeyCursor(IDBKeyRange.only(docId));
+
+          cursorRequest.onsuccess = event => {
+            const cursor = event.target.result;
+            if (cursor) {
+              store.delete(cursor.primaryKey);
+              cursor.continue();
+              return;
+            }
+
+            let updatedAt = Date.now();
+            (strokes || []).forEach((stroke, order) => {
+              store.put({
+                key: `${docId}:${stroke.id}`,
+                docId,
+                strokeId: stroke.id,
+                stroke: normalizeDrawing(stroke),
+                order,
+                updatedAt: updatedAt++
+              });
+            });
+          };
+
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("重建笔迹存储失败")
+          );
+          transaction.onabort = () => reject(
+            transaction.error || new Error("重建笔迹事务被中止")
+          );
+        });
+      }
+
+      async function deleteDocumentInk(docId) {
+        return replaceDocumentInk(docId, []);
+      }
+
+      function pdfAnnotationRecordKey(
+        docId,
+        assetId,
+        pageNumber,
+        strokeId
+      ) {
+        return `${docId}:${assetId}:${pageNumber}:${strokeId}`;
+      }
+
+      async function writePdfAnnotationStroke(
+        docId,
+        assetId,
+        pageNumber,
+        stroke
+      ) {
+        const db = await openLibraryDatabase();
+        const currentAsset = state.assets?.[assetId];
+        const pageStrokes =
+          currentAsset?.pdfAnnotations?.[String(pageNumber)] || [];
+        const order = Math.max(
+          0,
+          pageStrokes.findIndex(
+            candidate => candidate.id === stroke.id
+          )
+        );
+
+        const record = {
+          key: pdfAnnotationRecordKey(
+            docId,
+            assetId,
+            pageNumber,
+            stroke.id
+          ),
+          docId,
+          assetId,
+          pageNumber,
+          strokeId: stroke.id,
+          stroke,
+          order,
+          updatedAt: Date.now()
+        };
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            PDF_ANNOTATION_STORE_NAME,
+            "readwrite"
+          );
+          transaction
+            .objectStore(PDF_ANNOTATION_STORE_NAME)
+            .put(record);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("保存 PDF 批注失败")
+          );
+        });
+      }
+
+      async function deletePdfAnnotationStroke(
+        docId,
+        assetId,
+        pageNumber,
+        strokeId
+      ) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            PDF_ANNOTATION_STORE_NAME,
+            "readwrite"
+          );
+          transaction
+            .objectStore(PDF_ANNOTATION_STORE_NAME)
+            .delete(
+              pdfAnnotationRecordKey(
+                docId,
+                assetId,
+                pageNumber,
+                strokeId
+              )
+            );
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error || new Error("删除 PDF 批注失败")
+          );
+        });
+      }
+
+      async function loadPdfAnnotations(docId, assetId) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            PDF_ANNOTATION_STORE_NAME,
+            "readonly"
+          );
+          const store = transaction.objectStore(
+            PDF_ANNOTATION_STORE_NAME
+          );
+          const index = store.index("assetId");
+          const request = index.getAll(IDBKeyRange.only(assetId));
+
+          request.onsuccess = () => {
+            const result = {};
+            const records = (request.result || [])
+              .filter(record => record.docId === docId)
+              .sort(
+                (a, b) =>
+                  Number(a.pageNumber) - Number(b.pageNumber) ||
+                  Number(a.order || 0) - Number(b.order || 0) ||
+                  Number(a.updatedAt || 0) -
+                    Number(b.updatedAt || 0)
+              );
+
+            for (const record of records) {
+              const page = String(record.pageNumber);
+              result[page] = result[page] || [];
+              result[page].push(record.stroke);
+            }
+            resolve(result);
+          };
+          request.onerror = () => reject(
+            request.error || new Error("读取 PDF 批注失败")
+          );
+        });
+      }
+
+      async function replacePdfAnnotations(
+        docId,
+        assetId,
+        annotationMap
+      ) {
+        const db = await openLibraryDatabase();
+
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            PDF_ANNOTATION_STORE_NAME,
+            "readwrite"
+          );
+          const store = transaction.objectStore(
+            PDF_ANNOTATION_STORE_NAME
+          );
+          const index = store.index("assetId");
+          const cursorRequest = index.openCursor(
+            IDBKeyRange.only(assetId)
+          );
+
+          cursorRequest.onsuccess = event => {
+            const cursor = event.target.result;
+            if (cursor) {
+              if (cursor.value.docId === docId) {
+                cursor.delete();
+              }
+              cursor.continue();
+              return;
+            }
+
+            let updatedAt = Date.now();
+            for (const [page, strokes] of Object.entries(
+              annotationMap || {}
+            )) {
+              (strokes || []).forEach((stroke, order) => {
+                store.put({
+                  key: pdfAnnotationRecordKey(
+                    docId,
+                    assetId,
+                    page,
+                    stroke.id
+                  ),
+                  docId,
+                  assetId,
+                  pageNumber: Number(page),
+                  strokeId: stroke.id,
+                  stroke,
+                  order,
+                  updatedAt: updatedAt++
+                });
+              });
+            }
+          };
+
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(
+            transaction.error ||
+              new Error("重建 PDF 批注存储失败")
+          );
+        });
+      }
+
+      async function hydrateDocumentInk(docId) {
+        if (hydratedInkDocuments.has(docId)) return;
+
+        const doc = library.documents?.[docId];
+        if (!doc) return;
+
+        const embedded = Array.isArray(doc.state?.drawings)
+          ? doc.state.drawings.map(normalizeDrawing)
+          : [];
+
+        if (embedded.length) {
+          await replaceDocumentInk(docId, embedded);
+          doc.state.drawings = embedded;
+        } else {
+          doc.state.drawings = await loadInkStrokes(docId);
+        }
+
+        hydratedInkDocuments.add(docId);
+      }
+
+      async function hydratePdfAnnotations(assetId) {
+        const doc = currentDocument();
+        const asset = state.assets?.[assetId];
+        if (!doc || !asset) return;
+
+        const hydrationKey = `${doc.id}:${assetId}`;
+        if (hydratedPdfAnnotationAssets.has(hydrationKey)) return;
+
+        const embedded =
+          asset.pdfAnnotations &&
+          typeof asset.pdfAnnotations === "object"
+            ? asset.pdfAnnotations
+            : null;
+
+        if (
+          embedded &&
+          Object.values(embedded).some(
+            strokes => Array.isArray(strokes) && strokes.length
+          )
+        ) {
+          await replacePdfAnnotations(doc.id, assetId, embedded);
+        } else {
+          asset.pdfAnnotations = await loadPdfAnnotations(
+            doc.id,
+            assetId
+          );
+        }
+
+        hydratedPdfAnnotationAssets.add(hydrationKey);
+      }
+
+      async function migrateIncrementalStores() {
+        let changed = false;
+
+        for (const [docId, doc] of Object.entries(
+          library.documents || {}
+        )) {
+          const drawings = Array.isArray(doc.state?.drawings)
+            ? doc.state.drawings.map(normalizeDrawing)
+            : [];
+
+          if (
+            drawings.length &&
+            !hydratedInkDocuments.has(docId)
+          ) {
+            await replaceDocumentInk(docId, drawings);
+            changed = true;
+          }
+
+          for (const [assetId, asset] of Object.entries(
+            doc.state?.assets || {}
+          )) {
+            const annotations =
+              asset?.pdfAnnotations &&
+              typeof asset.pdfAnnotations === "object"
+                ? asset.pdfAnnotations
+                : null;
+
+            const hydrationKey = `${docId}:${assetId}`;
+            if (
+              annotations &&
+              !hydratedPdfAnnotationAssets.has(hydrationKey) &&
+              Object.values(annotations).some(
+                strokes => Array.isArray(strokes) && strokes.length
+              )
+            ) {
+              await replacePdfAnnotations(
+                docId,
+                assetId,
+                annotations
+              );
+              hydratedPdfAnnotationAssets.add(hydrationKey);
+              changed = true;
+            }
+          }
+        }
+
+        await hydrateDocumentInk(library.currentDocumentId);
+
+        if (changed) {
+          persistLibrary({ immediate: true });
+        }
       }
 
       async function refreshBrowserStorageStatus({ force = false } = {}) {
@@ -5901,8 +6789,39 @@
       }
 
       function cloneLibraryForStorage() {
-        // IndexedDB.put 自身会结构化克隆；不再提前复制整库。
-        return library;
+        const documents = {};
+
+        for (const [docId, doc] of Object.entries(library.documents || {})) {
+          const sourceState = doc.state || {};
+          const assets = {};
+
+          for (const [assetId, asset] of Object.entries(
+            sourceState.assets || {}
+          )) {
+            const {
+              dataUrl,
+              pdfAnnotations,
+              ...metadata
+            } = asset || {};
+            assets[assetId] = metadata;
+          }
+
+          documents[docId] = {
+            ...doc,
+            state: {
+              ...sourceState,
+              drawings: [],
+              assets
+            }
+          };
+        }
+
+        return {
+          version: library.version || 16,
+          currentDocumentId: library.currentDocumentId,
+          settings: library.settings || {},
+          documents
+        };
       }
 
       async function flushLibraryPersistence() {
@@ -5910,6 +6829,7 @@
         persistRunning = true;
 
         try {
+          setSaveIndicator("saving", "正在保存");
           while (persistRequested) {
             persistRequested = false;
             const snapshot = cloneLibraryForStorage();
@@ -5917,6 +6837,7 @@
           }
 
           setBrowserStorageStatus("IndexedDB 保存完成", "ok");
+          setSaveIndicator("saved", "已保存");
           refreshBrowserStorageStatus();
         } catch (error) {
           console.error("保存 IndexedDB 笔记库失败", error);
@@ -5924,6 +6845,7 @@
             `保存失败：${error.message || "IndexedDB 写入异常"}`,
             "error"
           );
+          setSaveIndicator("error", "保存失败");
           statusEl.textContent =
             "浏览器大容量存储保存失败，请立即备份全部笔记";
         } finally {
@@ -5973,10 +6895,44 @@
         }
       }
 
-      function persistLibrary() {
+      function setSaveIndicator(stateName, message) {
+        if (!saveStateIndicator) return;
+
+        saveStateIndicator.classList.remove(
+          "pending",
+          "saving",
+          "error"
+        );
+        if (stateName && stateName !== "saved") {
+          saveStateIndicator.classList.add(stateName);
+        }
+
+        saveStateIndicatorText.textContent = message;
+        clearTimeout(saveIndicatorTimer);
+
+        if (stateName === "saved") {
+          saveIndicatorTimer = setTimeout(() => {
+            const time = new Intl.DateTimeFormat("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit"
+            }).format(new Date());
+            saveStateIndicatorText.textContent = `已保存 · ${time}`;
+          }, 500);
+        }
+      }
+
+      function persistLibrary({ immediate = false } = {}) {
         if (!library) return false;
+
         persistRequested = true;
-        queueMicrotask(flushLibraryPersistence);
+        setSaveIndicator("pending", "待保存");
+
+        clearTimeout(persistDispatchTimer);
+        persistDispatchTimer = setTimeout(() => {
+          persistDispatchTimer = null;
+          queueMicrotask(flushLibraryPersistence);
+        }, immediate ? 0 : 480);
+
         return true;
       }
 
@@ -6081,17 +7037,32 @@
         }
       }
 
-      function switchDocument(documentId) {
-        if (!library?.documents[documentId] || documentId === library.currentDocumentId) return;
+      async function switchDocument(documentId) {
+        if (
+          !library?.documents[documentId] ||
+          documentId === library.currentDocumentId
+        ) {
+          return;
+        }
+
         closePdfReaderForDocumentSwitch();
         setActiveCanvasTool("select", { silent: true });
         updateCurrentDocument();
+        persistLibrary();
+
         library.currentDocumentId = documentId;
-        state = ensureStateCollections(cloneJson(library.documents[documentId].state));
+        setSaveIndicator("saving", "正在打开笔记");
+
+        await hydrateDocumentInk(documentId);
+
+        state = ensureStateCollections(
+          cloneJson(library.documents[documentId].state)
+        );
         state.nodes = state.nodes.map(normalizeNode);
         initializeHistoryForCurrent({ force: false });
         state.connectMode = false;
         state.connectSourceId = null;
+
         closeBranchPanel();
         hideContextMenu();
         applyTheme(state.theme);
@@ -6103,6 +7074,7 @@
         setSelected(state.selectedId);
         persistLibrary();
         renderDocumentList();
+        setSaveIndicator("saved", "笔记已打开");
       }
 
       function createNewDocument() {
@@ -6112,6 +7084,7 @@
         const doc = createDocumentRecord(title.trim() || "未命名笔记");
         library.documents[doc.id] = doc;
         library.currentDocumentId = doc.id;
+        hydratedInkDocuments.add(doc.id);
         clearSelection({ render: false });
         state = ensureStateCollections(cloneJson(doc.state));
         initializeHistoryForCurrent({ force: true });
@@ -6138,10 +7111,13 @@
         renderDocumentList();
       }
 
-      function duplicateCurrentDocument() {
+      async function duplicateCurrentDocument() {
         const source = currentDocument();
         if (!source) return;
+
         updateCurrentDocument();
+        await awaitPendingIncrementalWrites();
+
         const copy = normalizeDocument({
           ...cloneJson(source),
           id: uid("doc"),
@@ -6151,12 +7127,38 @@
           localFileName: null,
           localSavedAt: null
         });
+
+        const copiedDrawings = (state.drawings || []).map(stroke => ({
+          ...cloneDrawingForHistory(stroke),
+          id: uid("stroke")
+        }));
+        copy.state.drawings = copiedDrawings;
+
         library.documents[copy.id] = copy;
         library.currentDocumentId = copy.id;
+        hydratedInkDocuments.add(copy.id);
+        await replaceDocumentInk(copy.id, copiedDrawings);
+
+        for (const [assetId, asset] of Object.entries(
+          copy.state.assets || {}
+        )) {
+          if (asset?.type !== "pdf") continue;
+          const annotations = await loadPdfAnnotations(
+            source.id,
+            assetId
+          );
+          await replacePdfAnnotations(
+            copy.id,
+            assetId,
+            annotations
+          );
+        }
+
         clearSelection({ render: false });
         state = ensureStateCollections(cloneJson(copy.state));
         initializeHistoryForCurrent({ force: true });
         persistLibrary();
+
         renderDocumentList();
         applyTheme(state.theme);
         applyTransform();
@@ -6173,7 +7175,19 @@
         if (!confirm(`确定删除“${doc.title}”吗？浏览器中的这份笔记将被删除。`)) return;
 
         await deleteStoredHandle(doc.id);
+        await deleteDocumentInk(doc.id);
+
+        for (const [assetId, asset] of Object.entries(
+          doc.state?.assets || {}
+        )) {
+          if (asset?.type === "pdf") {
+            await replacePdfAnnotations(doc.id, assetId, {});
+          }
+        }
+
         historyByDocument.delete(doc.id);
+        inkHistoryByDocument.delete(doc.id);
+        hydratedInkDocuments.delete(doc.id);
         delete library.documents[doc.id];
 
         const remaining = Object.values(library.documents)
@@ -6187,6 +7201,7 @@
           library.currentDocumentId = remaining[0].id;
         }
 
+        await hydrateDocumentInk(library.currentDocumentId);
         state = ensureStateCollections(cloneJson(currentDocument().state));
         initializeHistoryForCurrent({ force: false });
         persistLibrary();
@@ -6197,6 +7212,12 @@
         renderFreeItems();
         renderDrawings();
         setSelected(state.selectedId);
+
+        scheduleIdleTask(() => {
+          garbageCollectBinaryAssets().catch(error => {
+            console.warn("清理未引用附件失败", error);
+          });
+        });
       }
 
       function setSidebarVisible(visible) {
@@ -6315,7 +7336,7 @@
 
         return {
           kind: "infinite-mindmap-document",
-          version: 15,
+          version: 16,
           exportedAt: nowIso(),
           document: exported.documents[doc.id]
         };
@@ -6364,6 +7385,32 @@
         }
       }
 
+      function remapImportedAssetIds(doc) {
+        const assets = doc.state?.assets || {};
+        const remap = new Map();
+        const nextAssets = {};
+
+        for (const [oldId, asset] of Object.entries(assets)) {
+          const newId = uid("asset");
+          remap.set(oldId, newId);
+          nextAssets[newId] = {
+            ...asset,
+            id: newId,
+            blobKey: newId
+          };
+        }
+
+        doc.state.assets = nextAssets;
+
+        for (const item of doc.state.freeItems || []) {
+          if (item.assetId && remap.has(item.assetId)) {
+            item.assetId = remap.get(item.assetId);
+          }
+        }
+
+        return doc;
+      }
+
       function parseDocumentFile(parsed, fallbackTitle) {
         if (parsed?.kind === "infinite-mindmap-document" && parsed.document) {
           return normalizeDocument(parsed.document, fallbackTitle);
@@ -6383,7 +7430,9 @@
 
       async function addOpenedDocument(parsed, fallbackTitle, handle = null) {
         updateCurrentDocument();
-        const imported = parseDocumentFile(parsed, fallbackTitle);
+        const imported = remapImportedAssetIds(
+          parseDocumentFile(parsed, fallbackTitle)
+        );
         imported.id = uid("doc");
         imported.createdAt = nowIso();
         imported.updatedAt = nowIso();
@@ -6394,7 +7443,9 @@
         state = ensureStateCollections(cloneJson(imported.state));
         initializeHistoryForCurrent({ force: true });
         if (handle) await storeHandle(imported.id, handle);
+        await migrateIncrementalStores();
         await migrateEmbeddedBinaryAssets();
+        hydratedInkDocuments.add(imported.id);
         persistLibrary();
         renderDocumentList();
         applyTheme(state.theme);
@@ -6431,7 +7482,7 @@
         updateCurrentDocument();
         return {
           kind: "infinite-mindmap-library",
-          version: 15,
+          version: 16,
           exportedAt: nowIso(),
           library: await materializeAssetsForExport(library)
         };
@@ -6488,7 +7539,9 @@
         let firstId = null;
 
         for (const raw of importedDocs) {
-          const doc = normalizeDocument(raw, raw?.title || "导入的笔记");
+          const doc = remapImportedAssetIds(
+            normalizeDocument(raw, raw?.title || "导入的笔记")
+          );
           doc.id = uid("doc");
           doc.createdAt = nowIso();
           doc.updatedAt = nowIso();
@@ -6504,6 +7557,7 @@
           initializeHistoryForCurrent({ force: true });
         }
 
+        await migrateIncrementalStores();
         await migrateEmbeddedBinaryAssets();
         persistLibrary();
         renderDocumentList();
@@ -6603,23 +7657,67 @@
       }
 
 
+      function computeDrawingBounds(points, width = 1) {
+        if (!Array.isArray(points) || !points.length) {
+          return {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0
+          };
+        }
+
+        let left = points[0].x;
+        let right = points[0].x;
+        let top = points[0].y;
+        let bottom = points[0].y;
+
+        for (let index = 1; index < points.length; index += 1) {
+          const point = points[index];
+          if (point.x < left) left = point.x;
+          if (point.x > right) right = point.x;
+          if (point.y < top) top = point.y;
+          if (point.y > bottom) bottom = point.y;
+        }
+
+        const padding = Math.max(2, Number(width) || 1) * 1.4;
+        return {
+          left: left - padding,
+          top: top - padding,
+          right: right + padding,
+          bottom: bottom + padding
+        };
+      }
+
       function normalizeDrawing(raw) {
-        const tool = raw?.tool === "watercolor" ? "watercolor" : "pen";
+        const tool = raw?.tool === "watercolor"
+          ? "watercolor"
+          : "pen";
+        const points = Array.isArray(raw?.points)
+          ? raw.points
+              .filter(
+                point =>
+                  Number.isFinite(point?.x) &&
+                  Number.isFinite(point?.y)
+              )
+              .map(point => ({
+                x: point.x,
+                y: point.y,
+                p: Number.isFinite(point.p) ? point.p : 0.5
+              }))
+          : [];
+        const baseWidth = Number.isFinite(raw?.baseWidth)
+          ? raw.baseWidth
+          : 6;
+
         return {
           id: raw?.id || uid("stroke"),
           tool,
           color: raw?.color || "#2563eb",
-          baseWidth: Number.isFinite(raw?.baseWidth) ? raw.baseWidth : 6,
+          baseWidth,
           pressureEnabled: raw?.pressureEnabled !== false,
-          points: Array.isArray(raw?.points)
-            ? raw.points
-                .filter(point => Number.isFinite(point?.x) && Number.isFinite(point?.y))
-                .map(point => ({
-                  x: point.x,
-                  y: point.y,
-                  p: Number.isFinite(point.p) ? point.p : 0.5
-                }))
-            : []
+          points,
+          bounds: computeDrawingBounds(points, baseWidth)
         };
       }
 
@@ -7048,6 +8146,52 @@
         statusEl.textContent = child.edgeLabel
           ? `关系标注已设置：${child.edgeLabel}`
           : "关系标注已清除";
+      }
+
+      let edgeRenderFrame = null;
+      let lastEdgeRenderAt = 0;
+
+      function scheduleEdgeRender() {
+        if (edgeRenderFrame) return;
+
+        edgeRenderFrame = requestAnimationFrame(timestamp => {
+          edgeRenderFrame = null;
+
+          if (timestamp - lastEdgeRenderAt < 30) {
+            edgeRenderFrame = requestAnimationFrame(() => {
+              edgeRenderFrame = null;
+              lastEdgeRenderAt = performance.now();
+              renderEdges();
+            });
+            return;
+          }
+
+          lastEdgeRenderAt = timestamp;
+          renderEdges();
+        });
+      }
+
+      function updateDraggedObjectElements(members) {
+        for (const member of members || []) {
+          if (member.kind === "node") {
+            const node = getNode(member.id);
+            const el = nodeLayer.querySelector(
+              `.node[data-id="${CSS.escape(member.id)}"]`
+            );
+            if (!node || !el) continue;
+            el.style.left = `${node.x}px`;
+            el.style.top = `${node.y}px`;
+          } else {
+            const item = getFreeItem(member.id);
+            const el = freeLayer.querySelector(
+              `.free-item[data-id="${CSS.escape(member.id)}"]`
+            );
+            if (!item || !el) continue;
+            el.style.left = `${item.x}px`;
+            el.style.top = `${item.y}px`;
+          }
+        }
+        scheduleEdgeRender();
       }
 
       function renderEdges() {
@@ -7785,32 +8929,35 @@
 
       async function ensurePdfJs() {
         if (!pdfJsPromise) {
-          pdfJsPromise = import(PDFJS_LOCAL_MODULE_URL)
-            .then(module => {
+          pdfJsPromise = (async () => {
+            let localError = null;
+
+            try {
+              const module = await import(PDFJS_LOCAL_MODULE_URL);
               module.GlobalWorkerOptions.workerSrc =
                 PDFJS_LOCAL_WORKER_URL;
               return module;
-            })
-            .catch(() =>
-              import(PDFJS_MODULE_URL).then(module => {
-                module.GlobalWorkerOptions.workerSrc =
-                  PDFJS_WORKER_URL;
-                return module;
-              })
-            );
-        }
-        return pdfJsPromise;
-      }
+            } catch (error) {
+              localError = error;
+              console.warn("本地 PDF.js 加载失败", error);
+            }
 
-      function dataUrlToUint8Array(dataUrl) {
-        const comma = String(dataUrl || "").indexOf(",");
-        if (comma < 0) throw new Error("PDF 数据格式无效");
-        const binary = atob(dataUrl.slice(comma + 1));
-        const bytes = new Uint8Array(binary.length);
-        for (let index = 0; index < binary.length; index += 1) {
-          bytes[index] = binary.charCodeAt(index);
+            try {
+              const module = await import(PDFJS_MODULE_URL);
+              module.GlobalWorkerOptions.workerSrc =
+                PDFJS_WORKER_URL;
+              return module;
+            } catch (cdnError) {
+              console.error("PDF.js CDN 回退也失败", cdnError);
+              throw new Error(
+                "PDF 批注引擎加载失败。请确认 vendor/pdf.min.mjs 和 " +
+                "vendor/pdf.worker.min.mjs 已上传到 GitHub。"
+              );
+            }
+          })();
         }
-        return bytes;
+
+        return pdfJsPromise;
       }
 
       async function getPdfDocument(assetId) {
@@ -7822,17 +8969,12 @@
         if (!asset) throw new Error("PDF 元数据已丢失");
 
         const pdfjs = await ensurePdfJs();
-        let bytes = pdfByteCache.get(assetId);
-
-        if (!bytes) {
-          const blob = await ensureBinaryAsset(assetId, asset);
-          bytes = new Uint8Array(await blob.arrayBuffer());
-          pdfByteCache.set(assetId, bytes);
-        }
+        const blob = await ensureBinaryAsset(assetId, asset);
+        const bytes = new Uint8Array(await blob.arrayBuffer());
 
         const promise = pdfjs
           .getDocument({
-            data: bytes.slice(),
+            data: bytes,
             useSystemFonts: true,
             disableAutoFetch: false,
             disableStream: false
@@ -7862,6 +9004,60 @@
           item.y + item.height < bounds.top ||
           item.y > bounds.bottom
         );
+      }
+
+      function revokeNativePdfPreview() {
+        if (activeNativePdfUrl) {
+          URL.revokeObjectURL(activeNativePdfUrl);
+          activeNativePdfUrl = null;
+        }
+        pdfNativePreviewActive = false;
+        pdfReaderBody.classList.remove("native-preview-active");
+      }
+
+      async function showNativePdfPreview(assetId, asset) {
+        revokeNativePdfPreview();
+
+        const blob = await ensureBinaryAsset(assetId, asset);
+        activeNativePdfUrl = URL.createObjectURL(blob);
+        pdfNativePreviewActive = true;
+        pdfReaderMode = "native";
+        pdfReaderBody.classList.add("native-preview-active");
+        pdfReaderPanel.classList.add("native-mode");
+        pdfReaderPanel
+          .querySelector(".pdf-reader-toolbar")
+          ?.classList.add("pdf-native-mode");
+        pdfReaderFastModeBtn.classList.add("active");
+        pdfReaderAnnotateModeBtn.classList.remove("active");
+
+        const safeName = String(asset.name || "PDF")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+
+        pdfReaderBody.innerHTML = `
+          <div class="pdf-native-preview-shell">
+            <iframe
+              class="pdf-native-preview-frame"
+              title="${safeName}"
+              src="${activeNativePdfUrl}#view=FitH&toolbar=0&navpanes=0">
+            </iframe>
+            <div class="pdf-native-preview-status">
+              浏览器原生快速阅读
+              <a href="${activeNativePdfUrl}" target="_blank"
+                rel="noopener">系统打开</a>
+            </div>
+          </div>
+        `;
+      }
+
+      function updateNativePreviewStatus(message, { error = false } = {}) {
+        const status = pdfReaderBody.querySelector(
+          ".pdf-native-preview-status"
+        );
+        if (!status) return;
+        status.textContent = message;
+        status.classList.toggle("error", error);
       }
 
       function ensurePdfReaderSettings() {
@@ -7909,6 +9105,10 @@
         pdfReaderTool = ["pan", "pen", "highlight", "eraser"].includes(tool)
           ? tool
           : "pan";
+
+        if (pdfReaderMode === "native") {
+          pdfReaderTool = "pan";
+        }
 
         const settings = ensurePdfReaderSettings();
         pdfReaderPanBtn.classList.toggle("active", pdfReaderTool === "pan");
@@ -7961,6 +9161,8 @@
       }
 
       function setPdfReaderCurrentPage(pageNumber, { scroll = false } = {}) {
+        if (pdfReaderMode !== "annotation") return;
+
         const asset = currentPdfAsset();
         const total = activePdfDocument?.numPages || asset?.pageCount || 1;
         const next = Math.max(1, Math.min(total, Number(pageNumber) || 1));
@@ -7982,6 +9184,7 @@
 
       function updatePdfReaderCurrentPageFromScroll() {
         pdfReaderScrollFrame = null;
+        if (pdfReaderMode !== "annotation") return;
         const bodyRect = pdfReaderBody.getBoundingClientRect();
         const targetY = bodyRect.top + Math.min(180, bodyRect.height * 0.3);
         let bestPage = pdfReaderCurrentPageNumber;
@@ -8034,6 +9237,10 @@
 
       function closePdfReader({ preserveAsset = false } = {}) {
         pdfReaderAnnotationSession = null;
+        revokeNativePdfPreview();
+        pdfReaderMode = "native";
+        pdfReaderPanel.classList.remove("native-mode");
+        pdfAnnotationModePromise = null;
         setPdfReaderMaximized(false);
         pdfRenderQueue = [];
         pdfRenderQueued.clear();
@@ -8051,6 +9258,18 @@
         pdfReaderNotesPanel.classList.remove("visible");
 
         if (!preserveAsset) {
+          const closingAssetId = activePdfAssetId;
+          if (activePdfDocument) {
+            try {
+              activePdfDocument.cleanup();
+              activePdfDocument.destroy();
+            } catch {
+              // PDF.js 资源可能已经释放。
+            }
+          }
+          if (closingAssetId) {
+            pdfDocumentCache.delete(closingAssetId);
+          }
           activePdfAssetId = null;
           activePdfDocument = null;
         }
@@ -8163,7 +9382,9 @@
       }
 
       function resizePdfAnnotationCanvas(canvas, cssWidth, cssHeight) {
-        const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+        const dpr = isCoarsePointerDevice()
+          ? Math.min(1.25, Math.max(1, window.devicePixelRatio || 1))
+          : Math.min(1.75, Math.max(1, window.devicePixelRatio || 1));
         canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
         canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
         canvas.style.width = `${cssWidth}px`;
@@ -8203,9 +9424,20 @@
         });
 
         if (bestIndex >= 0) {
-          strokes.splice(bestIndex, 1);
+          const [removedStroke] = strokes.splice(bestIndex, 1);
           redrawPdfAnnotationCanvas(pageNumber);
-          autosaveInk();
+
+          const doc = currentDocument();
+          if (doc && removedStroke) {
+            trackIncrementalWrite(
+              () => deletePdfAnnotationStroke(
+                doc.id,
+                activePdfAssetId,
+                pageNumber,
+                removedStroke.id
+              )
+            );
+          }
           return true;
         }
 
@@ -8217,8 +9449,6 @@
           pdfReaderTool === "pan" ? "none" : "auto";
 
         canvas.addEventListener("pointerdown", event => {
-          recordPenContact(event, "pdf");
-
           if (pdfReaderTool === "pan") return;
           if (event.pointerType === "touch") return;
           if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -8264,8 +9494,6 @@
         });
 
         canvas.addEventListener("pointermove", event => {
-          recordPenContact(event, "pdf");
-
           const session = pdfReaderAnnotationSession;
           if (!session || session.pointerId !== event.pointerId) {
             if (
@@ -8307,8 +9535,6 @@
         });
 
         const finish = event => {
-          releasePenContact(event, "pdf");
-
           const session = pdfReaderAnnotationSession;
           if (!session || session.pointerId !== event.pointerId) return;
 
@@ -8319,7 +9545,18 @@
             const asset = currentPdfAsset();
             if (asset) {
               pdfAnnotationList(asset, pageNumber).push(session.stroke);
-              autosaveInk();
+
+              const doc = currentDocument();
+              if (doc) {
+                trackIncrementalWrite(
+                  () => writePdfAnnotationStroke(
+                    doc.id,
+                    activePdfAssetId,
+                    pageNumber,
+                    session.stroke
+                  )
+                );
+              }
             }
           }
 
@@ -8330,34 +9567,6 @@
         canvas.addEventListener("pointerup", finish);
         canvas.addEventListener("pointercancel", finish);
         canvas.addEventListener("lostpointercapture", finish);
-        canvas.addEventListener(
-          "touchstart",
-          event => {
-            const stylusTouch = [...event.changedTouches].some(touch =>
-              isStylusLikeTouch(touch, "pdf")
-            );
-            if (stylusTouch) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-          },
-          { capture: true, passive: false }
-        );
-
-        canvas.addEventListener(
-          "touchmove",
-          event => {
-            const stylusTouch = [...event.changedTouches].some(touch =>
-              isStylusLikeTouch(touch, "pdf")
-            );
-            if (stylusTouch) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-          },
-          { capture: true, passive: false }
-        );
-
         canvas.addEventListener("contextmenu", event => event.preventDefault());
         canvas.addEventListener("selectstart", event => event.preventDefault());
       }
@@ -8604,18 +9813,15 @@
         }
 
         activePdfAssetId = assetId;
-        ensurePdfAssetAnnotations(asset);
-
         const settings = ensurePdfReaderSettings();
         pdfReaderZoom = settings.zoom;
-        pdfReaderColor.value = settings.penColor;
-        pdfReaderStrokeWidth.value = String(settings.penWidth);
         pdfReaderNotesInput.value = asset.readerNotes || "";
         pdfReaderTitle.textContent = asset.name || "PDF 阅读";
-        pdfReaderPageStatus.textContent = "正在读取 PDF…";
-        pdfReaderBody.innerHTML = `
-          <div class="pdf-reader-empty">正在打开电子书…</div>
-        `;
+        pdfReaderPageStatus.textContent = "快速阅读";
+        pdfReaderCurrentPage.textContent = "—";
+        pdfReaderTotalPages.textContent = asset.pageCount || "—";
+        pdfReaderPageSlider.max = String(asset.pageCount || 1);
+        pdfReaderPageSlider.value = "1";
 
         mainShell.classList.add("pdf-reader-open");
         mainShell.style.setProperty(
@@ -8623,13 +9829,7 @@
           `${settings.width}vw`
         );
         pdfReaderPanel.setAttribute("aria-hidden", "false");
-        setPdfReaderTool("pan");
         setPdfReaderMaximized(false);
-        updatePdfReaderZoomLabel();
-        pdfReaderCurrentPage.textContent = "1";
-        pdfReaderTotalPages.textContent = String(asset.pageCount || 1);
-        pdfReaderPageSlider.max = String(asset.pageCount || 1);
-        pdfReaderPageSlider.value = "1";
 
         requestAnimationFrame(() => {
           applyTransform();
@@ -8639,47 +9839,141 @@
         });
 
         try {
-          activePdfDocument = await getPdfDocument(assetId);
-          asset.pageCount = activePdfDocument.numPages;
+          await showNativePdfPreview(assetId, asset);
           pdfReaderPageStatus.textContent =
-            `${activePdfDocument.numPages} 页 · 连续阅读`;
-
-          pdfReaderBody.innerHTML = "";
-          const fragment = document.createDocumentFragment();
-
-          for (
-            let pageNumber = 1;
-            pageNumber <= activePdfDocument.numPages;
-            pageNumber += 1
-          ) {
-            fragment.appendChild(
-              createPdfReaderPageShell(pageNumber)
-            );
-          }
-
-          pdfReaderBody.appendChild(fragment);
-          setPdfReaderCurrentPage(1);
-          observePdfReaderPages();
-
-          const firstPage = pdfReaderBody.querySelector(
-            '.pdf-reader-page[data-page-number="1"]'
-          );
-          const secondPage = pdfReaderBody.querySelector(
-            '.pdf-reader-page[data-page-number="2"]'
-          );
-          enqueuePdfReaderPage(1, firstPage, 5000);
-          if (secondPage) enqueuePdfReaderPage(2, secondPage, 4000);
-
-          autosave();
+            asset.pageCount
+              ? `快速阅读 · ${asset.pageCount} 页`
+              : "快速阅读";
         } catch (error) {
-          console.error("打开 PDF 阅读器失败", error);
+          console.error("原生 PDF 预览失败", error);
+          pdfReaderBody.classList.remove("native-preview-active");
           pdfReaderBody.innerHTML = `
             <div class="pdf-reader-empty">
-              PDF 打开失败。首次使用 PDF 阅读功能需要联网加载 PDF.js。
+              无法在右侧嵌入系统 PDF 阅读器。
+              请点击文件卡片中的“下载”，或重新导入该 PDF。
             </div>
           `;
-          pdfReaderPageStatus.textContent = "打开失败";
+          pdfReaderPageStatus.textContent = "快速阅读打开失败";
         }
+      }
+
+      async function enterPdfAnnotationMode(
+        preferredTool = "pen"
+      ) {
+        if (!activePdfAssetId) return false;
+        if (pdfReaderMode === "annotation" && activePdfDocument) {
+          setPdfReaderTool(preferredTool);
+          return true;
+        }
+
+        if (pdfAnnotationModePromise) {
+          await pdfAnnotationModePromise;
+          setPdfReaderTool(preferredTool);
+          return true;
+        }
+
+        const asset = currentPdfAsset();
+        if (!asset) return false;
+
+        pdfAnnotationModePromise = (async () => {
+          pdfReaderAnnotateModeBtn.disabled = true;
+          pdfReaderAnnotateModeBtn.textContent = "启动中…";
+          pdfReaderPageStatus.textContent = "正在启动批注模式…";
+          setSaveIndicator("saving", "正在准备 PDF 批注");
+
+          try {
+            await hydratePdfAnnotations(activePdfAssetId);
+            activePdfDocument = await getPdfDocument(
+              activePdfAssetId
+            );
+            asset.pageCount = activePdfDocument.numPages;
+
+            revokeNativePdfPreview();
+            pdfReaderMode = "annotation";
+            pdfReaderBody.classList.remove(
+              "native-preview-active"
+            );
+            pdfReaderPanel.classList.remove("native-mode");
+            pdfReaderPanel
+              .querySelector(".pdf-reader-toolbar")
+              ?.classList.remove("pdf-native-mode");
+            pdfReaderFastModeBtn.classList.remove("active");
+            pdfReaderAnnotateModeBtn.classList.add("active");
+
+            pdfReaderBody.innerHTML = "";
+            const fragment = document.createDocumentFragment();
+
+            for (
+              let pageNumber = 1;
+              pageNumber <= activePdfDocument.numPages;
+              pageNumber += 1
+            ) {
+              fragment.appendChild(
+                createPdfReaderPageShell(pageNumber)
+              );
+            }
+
+            pdfReaderBody.appendChild(fragment);
+            setPdfReaderCurrentPage(1);
+            observePdfReaderPages();
+
+            const firstPage = pdfReaderBody.querySelector(
+              '.pdf-reader-page[data-page-number="1"]'
+            );
+            enqueuePdfReaderPage(1, firstPage, 5000);
+
+            pdfReaderPageStatus.textContent =
+              `${activePdfDocument.numPages} 页 · 批注模式`;
+            persistLibrary();
+            setSaveIndicator("saved", "批注模式已就绪");
+          } catch (error) {
+            console.error("批注模式启动失败", error);
+            await showNativePdfPreview(activePdfAssetId, asset);
+            pdfReaderPageStatus.textContent =
+              "快速阅读 · 批注模式启动失败";
+            updateNativePreviewStatus(
+              `批注模式启动失败：${error.message || error}`,
+              { error: true }
+            );
+            setSaveIndicator("error", "PDF 批注启动失败");
+            return false;
+          } finally {
+            pdfReaderAnnotateModeBtn.disabled = false;
+            pdfReaderAnnotateModeBtn.textContent = "批注模式";
+            pdfAnnotationModePromise = null;
+          }
+
+          return true;
+        })();
+
+        const ready = await pdfAnnotationModePromise;
+        if (ready) setPdfReaderTool(preferredTool);
+        return ready;
+      }
+
+      async function enterPdfFastMode() {
+        const asset = currentPdfAsset();
+        if (!asset || !activePdfAssetId) return;
+
+        pdfReaderObserver?.disconnect();
+        pdfReaderObserver = null;
+        pdfRenderQueue = [];
+        pdfRenderQueued.clear();
+
+        for (const task of pdfReaderPageRenders.values()) {
+          try {
+            task.cancel();
+          } catch {
+            // 无需处理。
+          }
+        }
+        pdfReaderPageRenders.clear();
+
+        await showNativePdfPreview(activePdfAssetId, asset);
+        pdfReaderPageStatus.textContent =
+          asset.pageCount
+            ? `快速阅读 · ${asset.pageCount} 页`
+            : "快速阅读";
       }
 
       async function renderPdfPageItem(item, el) {
@@ -9378,9 +10672,18 @@
         if (!silent) {
           const settings = ensureDrawingSettings();
           const palmText = settings.palmRejection
-            ? "；防误触已开启，手指不会落笔"
+            ? "；防误触开启"
             : "";
-          statusEl.textContent = `当前工具：${toolLabel(activeCanvasTool)}${palmText}`;
+          const panText =
+            settings.singleFingerPan &&
+            ["pen", "watercolor", "laser", "eraser"].includes(
+              activeCanvasTool
+            )
+              ? "；Apple Pencil 操作，手指移动画布"
+              : "";
+          statusEl.textContent =
+            `当前工具：${toolLabel(activeCanvasTool)}` +
+            `${palmText}${panText}`;
         }
       }
 
@@ -9453,67 +10756,6 @@
           return pressure > 0 ? Math.max(0.05, Math.min(1, pressure)) : 0.35;
         }
         return 0.5;
-      }
-
-      function recordPenContact(event, zone) {
-        if (event.pointerType !== "pen") return;
-
-        const contact = {
-          pointerId: event.pointerId,
-          x: event.clientX,
-          y: event.clientY,
-          time: performance.now(),
-          zone
-        };
-
-        activePenContacts.set(event.pointerId, contact);
-        lastPenContactByZone[zone] = contact;
-        lastPenActivityAt = contact.time;
-      }
-
-      function releasePenContact(event, zone) {
-        if (event.pointerType !== "pen") return;
-        recordPenContact(event, zone);
-
-        const pointerId = event.pointerId;
-        setTimeout(() => {
-          activePenContacts.delete(pointerId);
-        }, 24);
-      }
-
-      function touchContactRadius(touch) {
-        return Math.max(
-          Number(touch.radiusX) || 0,
-          Number(touch.radiusY) || 0
-        );
-      }
-
-      function isStylusLikeTouch(touch, zone) {
-        if (!touch) return false;
-
-        if (touch.touchType === "stylus") return true;
-
-        const radius = touchContactRadius(touch);
-        const force = Number(touch.force) || 0;
-
-        // Apple Pencil 的 Touch 事件通常接触面很小且带压力。
-        if (radius > 0 && radius <= 9 && force > 0.01) return true;
-
-        const now = performance.now();
-        const recentContacts = [
-          lastPenContactByZone[zone],
-          ...activePenContacts.values()
-        ].filter(Boolean);
-
-        return recentContacts.some(contact => {
-          if (now - contact.time > 48) return false;
-          return (
-            Math.hypot(
-              Number(touch.clientX) - contact.x,
-              Number(touch.clientY) - contact.y
-            ) < 34
-          );
-        });
       }
 
       function canUsePointerForCanvasTool(event) {
@@ -9620,6 +10862,29 @@
         const points = stroke?.points || [];
         if (!points.length) return;
 
+        if (viewport && stroke.bounds) {
+          const padding = 100 / Math.max(0.2, state.scale);
+          const visibleWorld = {
+            left: (-state.panX / state.scale) - padding,
+            top: (-state.panY / state.scale) - padding,
+            right:
+              ((viewport.width - state.panX) / state.scale) +
+              padding,
+            bottom:
+              ((viewport.height - state.panY) / state.scale) +
+              padding
+          };
+
+          if (
+            stroke.bounds.right < visibleWorld.left ||
+            stroke.bounds.left > visibleWorld.right ||
+            stroke.bounds.bottom < visibleWorld.top ||
+            stroke.bounds.top > visibleWorld.bottom
+          ) {
+            return;
+          }
+        }
+
         if (points.length === 1) {
           const point = worldToScreenPoint(points[0]);
           context.beginPath();
@@ -9725,6 +10990,40 @@
         };
       }
 
+      function expandDrawingBounds(stroke, point) {
+        const padding = Math.max(
+          2,
+          Number(stroke.baseWidth) || 1
+        ) * 1.4;
+
+        if (!stroke.bounds) {
+          stroke.bounds = {
+            left: point.x - padding,
+            top: point.y - padding,
+            right: point.x + padding,
+            bottom: point.y + padding
+          };
+          return;
+        }
+
+        stroke.bounds.left = Math.min(
+          stroke.bounds.left,
+          point.x - padding
+        );
+        stroke.bounds.top = Math.min(
+          stroke.bounds.top,
+          point.y - padding
+        );
+        stroke.bounds.right = Math.max(
+          stroke.bounds.right,
+          point.x + padding
+        );
+        stroke.bounds.bottom = Math.max(
+          stroke.bounds.bottom,
+          point.y + padding
+        );
+      }
+
       function appendCoalescedDrawingPoints(event, targetStroke) {
         const events = typeof event.getCoalescedEvents === "function"
           ? event.getCoalescedEvents()
@@ -9741,6 +11040,7 @@
             Math.hypot(point.x - previous.x, point.y - previous.y) >= minDistance
           ) {
             targetStroke.points.push(point);
+            expandDrawingBounds(targetStroke, point);
           }
         }
       }
@@ -9861,6 +11161,25 @@
       function strokeTouchesEraserSweep(stroke, eraseStart, eraseEnd, radius) {
         const points = stroke.points || [];
         if (!points.length) return false;
+
+        const bounds =
+          stroke.bounds ||
+          computeDrawingBounds(points, stroke.baseWidth);
+        const sweepBounds = {
+          left: Math.min(eraseStart.x, eraseEnd.x) - radius,
+          top: Math.min(eraseStart.y, eraseEnd.y) - radius,
+          right: Math.max(eraseStart.x, eraseEnd.x) + radius,
+          bottom: Math.max(eraseStart.y, eraseEnd.y) + radius
+        };
+
+        if (
+          bounds.right < sweepBounds.left ||
+          bounds.left > sweepBounds.right ||
+          bounds.bottom < sweepBounds.top ||
+          bounds.top > sweepBounds.bottom
+        ) {
+          return false;
+        }
 
         if (points.length === 1) {
           return (
@@ -10060,12 +11379,25 @@
         }
 
         workspace.classList.remove("panning");
+        endFastInkPan();
         return true;
       }
 
       function beginDrawingTouchPan(event, { force = false } = {}) {
         const settings = ensureDrawingSettings();
         if (!force && !settings.singleFingerPan) return false;
+
+        if (
+          currentStroke ||
+          laserStroke ||
+          eraserPointerId !== null
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          statusEl.textContent =
+            "请先抬起 Apple Pencil，再用手指移动画布";
+          return true;
+        }
 
         if (isLikelyPalmContact(event)) {
           event.preventDefault();
@@ -10140,6 +11472,7 @@
           drawingTouchPanState.lastClientX = event.clientX;
           drawingTouchPanState.lastClientY = event.clientY;
           workspace.classList.add("panning");
+          beginFastInkPan();
 
           event.preventDefault();
           event.stopPropagation();
@@ -10153,7 +11486,7 @@
 
         state.panX += dx;
         state.panY += dy;
-        applyTransform();
+        updateFastInkPan();
 
         event.preventDefault();
         event.stopPropagation();
@@ -10170,16 +11503,28 @@
 
         const changed = drawingTouchPanState.started;
         cancelDrawingTouchPan(event);
+        endFastInkPan();
 
-        if (changed) autosave();
+        if (changed) autosaveViewState();
         event.preventDefault();
         event.stopPropagation();
         return true;
       }
 
-      function handleCanvasToolPointerDown(event) {
-        recordPenContact(event, "workspace");
+      function isCanvasInteractiveControl(target) {
+        return Boolean(
+          target?.closest?.(
+            "button, input, select, textarea, label, a, " +
+            "[contenteditable='true'], .pdf-file-actions, " +
+            ".attachment-download, .free-resize-handle, " +
+            ".pure-emphasis-toolbar, .mindmap-floating-toolbar, " +
+            ".tablet-more-panel, .pure-tool-settings-popover"
+          )
+        );
+      }
 
+      function handleCanvasToolPointerDown(event) {
+        if (isCanvasInteractiveControl(event.target)) return false;
         if (event.pointerType === "touch" && tabletPanMode) {
           return beginDrawingTouchPan(event, { force: true });
         }
@@ -10190,9 +11535,7 @@
           event.pointerType === "touch" &&
           ensureDrawingSettings().singleFingerPan
         ) {
-          event.preventDefault();
-          event.stopPropagation();
-          return true;
+          return beginDrawingTouchPan(event);
         }
 
         if (!canUsePointerForCanvasTool(event)) {
@@ -10245,6 +11588,10 @@
             points: [drawingPointFromEvent(event)]
           });
           currentStroke.pointerId = event.pointerId;
+          currentStroke.bounds = computeDrawingBounds(
+            currentStroke.points,
+            currentStroke.baseWidth
+          );
 
           state.drawings = state.drawings || [];
           state.drawings.push(currentStroke);
@@ -10283,6 +11630,12 @@
 
         if (activeCanvasTool === "eraser") {
           eraserChanged = false;
+          eraserBeforeMap = new Map(
+            (state.drawings || []).map(stroke => [stroke.id, stroke])
+          );
+          eraserBeforeOrder = (state.drawings || []).map(
+            stroke => stroke.id
+          );
           eraserPointerId = event.pointerId;
           eraserPreviousPoint = screenToWorld(event.clientX, event.clientY);
           eraseAt(event);
@@ -10298,8 +11651,6 @@
       }
 
       function handleCanvasToolPointerMove(event) {
-        recordPenContact(event, "workspace");
-
         if (moveDrawingTouchPan(event)) return true;
 
         if (
@@ -10365,8 +11716,6 @@
       }
 
       function releaseCanvasToolPointer(event) {
-        releasePenContact(event, "workspace");
-
         if (endDrawingTouchPan(event)) return true;
 
         if (
@@ -10399,14 +11748,46 @@
             renderSingleStrokeDot(currentStroke);
           }
 
-          currentStroke.points = simplifyStrokePoints(
-            currentStroke.points,
-            Math.max(0.3, currentStroke.baseWidth * 0.045)
+          const completedStroke = currentStroke;
+          delete completedStroke.pointerId;
+          completedStroke.bounds = computeDrawingBounds(
+            completedStroke.points,
+            completedStroke.baseWidth
+          );
+
+          const completedIndex = (state.drawings || []).findIndex(
+            stroke => stroke.id === completedStroke.id
+          );
+          if (completedIndex >= 0) {
+            state.drawings[completedIndex] = completedStroke;
+          }
+
+          const afterOrder = (state.drawings || []).map(
+            stroke => stroke.id
+          );
+          const beforeOrder = afterOrder.filter(
+            id => id !== completedStroke.id
           );
 
           currentStroke = null;
           currentStrokeRenderedCount = 0;
           document.body.classList.remove("inking-active");
+
+          pushInkHistoryAction({
+            type: "add-stroke",
+            added: [completedStroke],
+            removed: [],
+            beforeOrder,
+            afterOrder,
+            at: Date.now()
+          });
+
+          const doc = currentDocument();
+          if (doc) {
+            trackIncrementalWrite(
+              () => writeInkStroke(doc.id, completedStroke)
+            );
+          }
           autosaveInk();
           return true;
         }
@@ -10428,8 +11809,45 @@
         ) {
           event.preventDefault();
           event.stopPropagation();
-          if (eraserChanged) autosaveInk();
+          if (eraserChanged) {
+            const afterMap = new Map(
+              (state.drawings || []).map(stroke => [stroke.id, stroke])
+            );
+            const removed = [];
+            const added = [];
+
+            for (const [id, beforeStroke] of eraserBeforeMap || []) {
+              const afterStroke = afterMap.get(id);
+              if (!afterStroke || afterStroke !== beforeStroke) {
+                removed.push(cloneDrawingForHistory(beforeStroke));
+              }
+            }
+
+            for (const [id, afterStroke] of afterMap) {
+              const beforeStroke = eraserBeforeMap?.get(id);
+              if (!beforeStroke || beforeStroke !== afterStroke) {
+                added.push(cloneDrawingForHistory(afterStroke));
+              }
+            }
+
+            pushInkHistoryAction({
+              type: "erase",
+              added,
+              removed,
+              beforeOrder: eraserBeforeOrder || [],
+              afterOrder: (state.drawings || []).map(
+                stroke => stroke.id
+              ),
+              at: Date.now()
+            });
+
+            persistInkDiff({ remove: removed, add: added });
+            autosaveInk();
+          }
+
           eraserChanged = false;
+          eraserBeforeMap = null;
+          eraserBeforeOrder = null;
           eraserPointerId = null;
           eraserPreviousPoint = null;
           document.body.classList.remove("inking-active");
@@ -11058,154 +12476,10 @@
         refreshSelectionRendering();
       }
 
-      function touchLooksLikePalm(touch) {
-        const radiusX = Number(touch.radiusX) || 0;
-        const radiusY = Number(touch.radiusY) || 0;
-        return Math.max(radiusX, radiusY) > 32;
-      }
+      // V16：iPad 只使用 Pointer Events。
+      // Pencil 是 pointerType="pen"，手指是 pointerType="touch"。
+      // 不再同时监听 Touch Events，避免同一次接触被处理两次。
 
-      function findTouchByIdentifier(touchList, identifier) {
-        return [...touchList].find(touch => touch.identifier === identifier) || null;
-      }
-
-      workspace.addEventListener("touchstart", event => {
-        const drawingMode = activeCanvasTool !== "select";
-        const settings = ensureDrawingSettings();
-
-        if (
-          !drawingMode ||
-          !settings.singleFingerPan ||
-          event.touches.length !== 1
-        ) {
-          return;
-        }
-
-        const touch = event.touches[0];
-
-        if (isStylusLikeTouch(touch, "workspace")) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        if (touchLooksLikePalm(touch)) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        touchEventPanState = {
-          identifier: touch.identifier,
-          initialClientX: touch.clientX,
-          initialClientY: touch.clientY,
-          lastClientX: touch.clientX,
-          lastClientY: touch.clientY,
-          startedAt: performance.now(),
-          started: false
-        };
-
-        event.preventDefault();
-        event.stopPropagation();
-      }, { capture: true, passive: false });
-
-      workspace.addEventListener("touchmove", event => {
-        if (!touchEventPanState) return;
-
-        const touch = findTouchByIdentifier(
-          event.touches,
-          touchEventPanState.identifier
-        );
-
-        if (!touch) return;
-
-        if (isStylusLikeTouch(touch, "workspace")) {
-          touchEventPanState = null;
-          workspace.classList.remove("panning");
-          endFastInkPan();
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        const contactRadius = Math.max(
-          Number(touch.radiusX) || 0,
-          Number(touch.radiusY) || 0
-        );
-
-        if (contactRadius > 48) {
-          touchEventPanState = null;
-          workspace.classList.remove("panning");
-          endFastInkPan();
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        if (!touchEventPanState.started) {
-          const dx = touch.clientX - touchEventPanState.initialClientX;
-          const dy = touch.clientY - touchEventPanState.initialClientY;
-          const distance = Math.hypot(dx, dy);
-          const elapsed = performance.now() - touchEventPanState.startedAt;
-
-          if (
-            distance < SINGLE_FINGER_PAN_START_DISTANCE ||
-            elapsed < SINGLE_FINGER_PAN_ARM_DELAY_MS
-          ) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-
-          touchEventPanState.started = true;
-          touchEventPanState.lastClientX = touch.clientX;
-          touchEventPanState.lastClientY = touch.clientY;
-          workspace.classList.add("panning");
-          beginFastInkPan();
-
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        state.panX += touch.clientX - touchEventPanState.lastClientX;
-        state.panY += touch.clientY - touchEventPanState.lastClientY;
-        touchEventPanState.lastClientX = touch.clientX;
-        touchEventPanState.lastClientY = touch.clientY;
-        updateFastInkPan();
-
-        event.preventDefault();
-        event.stopPropagation();
-      }, { capture: true, passive: false });
-
-      const finishTouchEventPan = event => {
-        if (!touchEventPanState) return;
-
-        const remaining = findTouchByIdentifier(
-          event.touches,
-          touchEventPanState.identifier
-        );
-        if (remaining) return;
-
-        const changed = touchEventPanState.started;
-        touchEventPanState = null;
-        workspace.classList.remove("panning");
-        endFastInkPan();
-        if (changed) autosave();
-
-        event.preventDefault();
-        event.stopPropagation();
-      };
-
-      workspace.addEventListener(
-        "touchend",
-        finishTouchEventPan,
-        { capture: true, passive: false }
-      );
-      workspace.addEventListener(
-        "touchcancel",
-        finishTouchEventPan,
-        { capture: true, passive: false }
-      );
 
       workspace.addEventListener("selectstart", event => {
         if (activeCanvasTool !== "select" && !event.target.closest("[contenteditable='true']")) {
@@ -11422,8 +12696,7 @@
             }
           }
 
-          renderNodes();
-          renderFreeItems();
+          updateDraggedObjectElements(dragState.members);
           return;
         }
 
@@ -11444,17 +12717,34 @@
               Math.min(900, resizeState.startHeight + dy)
             );
 
-            renderFreeItems();
+            const el = freeLayer.querySelector(
+              `.free-item[data-id="${CSS.escape(item.id)}"]`
+            );
+            if (el) {
+              el.style.width = `${item.width}px`;
+              el.style.height = `${item.height}px`;
+            }
           } else {
             const node = getNode(resizeState.id);
             if (!node) return;
-            node.width = Math.max(160, Math.min(640, resizeState.startWidth + dx));
-            renderNodes();
+            node.width = Math.max(
+              160,
+              Math.min(640, resizeState.startWidth + dx)
+            );
+            const el = nodeLayer.querySelector(
+              `.node[data-id="${CSS.escape(node.id)}"]`
+            );
+            if (el) el.style.width = `${node.width}px`;
+            scheduleEdgeRender();
           }
           return;
         }
 
         if (panState && panState.pointerId === event.pointerId) {
+          if (panState.started && !fastInkPanState) {
+            beginFastInkPan();
+          }
+
           if (!panState.started) {
             const distance = Math.hypot(
               event.clientX - panState.startX,
@@ -11466,6 +12756,7 @@
             panState.lastX = event.clientX;
             panState.lastY = event.clientY;
             workspace.classList.add("panning");
+            beginFastInkPan();
             return;
           }
 
@@ -11479,7 +12770,7 @@
             state.panY = panState.panY + event.clientY - panState.startY;
           }
 
-          applyTransform();
+          updateFastInkPan();
         }
       });
 
@@ -11489,7 +12780,14 @@
           return;
         }
 
-        if (dragState?.started || resizeState || panState) autosave();
+        if (dragState?.started || resizeState) {
+          renderNodes();
+          renderFreeItems();
+          scheduleEdgeRender();
+          autosave();
+        } else if (panState) {
+          autosaveViewState();
+        }
 
         if (dragState?.started && dragState.captureElement) {
           try {
@@ -11514,6 +12812,7 @@
         dragState = null;
         resizeState = null;
         panState = null;
+        endFastInkPan();
         document.body.classList.remove("object-dragging");
         workspace.classList.remove("panning");
       });
@@ -11524,6 +12823,7 @@
         dragState = null;
         resizeState = null;
         panState = null;
+        endFastInkPan();
         document.body.classList.remove("object-dragging");
         workspace.classList.remove("panning");
       });
@@ -11540,15 +12840,33 @@
         event.preventDefault();
 
         if (event.ctrlKey) {
-          const factor = Math.max(0.82, Math.min(1.22, Math.exp(-event.deltaY * 0.008)));
-          zoomAt(event.clientX, event.clientY, state.scale * factor);
-        } else {
-          state.panX -= event.deltaX;
-          state.panY -= event.deltaY;
-          applyTransform();
+          clearTimeout(wheelPanEndTimer);
+          endFastInkPan();
+
+          const factor = Math.max(
+            0.82,
+            Math.min(1.22, Math.exp(-event.deltaY * 0.008))
+          );
+          zoomAt(
+            event.clientX,
+            event.clientY,
+            state.scale * factor
+          );
+          autosaveViewState();
+          return;
         }
 
-        autosave();
+        if (!fastInkPanState) beginFastInkPan();
+
+        state.panX -= event.deltaX;
+        state.panY -= event.deltaY;
+        updateFastInkPan();
+
+        clearTimeout(wheelPanEndTimer);
+        wheelPanEndTimer = setTimeout(() => {
+          endFastInkPan();
+          autosaveViewState();
+        }, 90);
       }, { passive: false });
 
       workspace.addEventListener("gesturestart", event => {
@@ -11570,7 +12888,7 @@
       workspace.addEventListener("gestureend", event => {
         event.preventDefault();
         gestureState = null;
-        autosave();
+        autosaveViewState();
       }, { passive: false });
 
       function pulseToolbar(toolbar) {
@@ -11871,67 +13189,18 @@
       addFrameBtn.addEventListener("click", () => setActiveCanvasTool("frame"));
       addLineBtn.addEventListener("click", () => setActiveCanvasTool("line"));
 
-      function readFileAsDataUrl(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
-          reader.readAsDataURL(file);
-        });
-      }
-
-      function parsePageRange(input, pageCount) {
-        const normalized = String(input || "").trim().toLowerCase();
-        if (!normalized) return [];
-        if (normalized === "all" || normalized === "全部") {
-          return Array.from({ length: pageCount }, (_, index) => index + 1);
-        }
-
-        const result = new Set();
-        for (const part of normalized.split(/[,，\s]+/)) {
-          if (!part) continue;
-          const range = part.match(/^(\d+)\s*[-~到]\s*(\d+)$/);
-          if (range) {
-            const start = Math.max(1, Math.min(pageCount, Number(range[1])));
-            const end = Math.max(1, Math.min(pageCount, Number(range[2])));
-            const lower = Math.min(start, end);
-            const upper = Math.max(start, end);
-            for (let value = lower; value <= upper; value += 1) {
-              result.add(value);
-            }
-            continue;
-          }
-
-          const single = Number(part);
-          if (Number.isInteger(single) && single >= 1 && single <= pageCount) {
-            result.add(single);
-          }
-        }
-
-        return [...result].sort((a, b) => a - b);
-      }
-
       async function importPdfFile(file) {
-        if (file.size > 100 * 1024 * 1024) {
+        if (file.size > 160 * 1024 * 1024) {
           const proceed = window.confirm(
             `这个 PDF 大约 ${formatFileSize(file.size)}。` +
-            `文件会保存到独立 Blob 存储，不会拖慢日常手写保存。继续导入吗？`
+            `导入后会占用较多本机浏览器空间。继续吗？`
           );
           if (!proceed) return;
         }
 
-        statusEl.textContent = "正在读取 PDF 目录…";
+        statusEl.textContent = "正在保存 PDF 文件…";
         const assetId = uid("asset");
         await writeBinaryAsset(assetId, file);
-
-        const pdfjs = await ensurePdfJs();
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        pdfByteCache.set(assetId, bytes);
-
-        const pdf = await pdfjs.getDocument({
-          data: bytes.slice(),
-          useSystemFonts: true
-        }).promise;
 
         state.assets = state.assets || {};
         state.assets[assetId] = {
@@ -11942,11 +13211,9 @@
           size: file.size,
           storage: "idb-blob",
           blobKey: assetId,
-          pageCount: pdf.numPages,
-          pdfAnnotations: {},
+          pageCount: null,
           readerNotes: ""
         };
-        pdfDocumentCache.set(assetId, Promise.resolve(pdf));
 
         const rect = workspace.getBoundingClientRect();
         const center = screenToWorld(
@@ -11971,8 +13238,9 @@
         setSelectedFree(item.id);
         renderFreeItems();
         autosave();
+
         statusEl.textContent =
-          `PDF 已导入：${pdf.numPages} 页。原文件独立保存，不会阻塞手写自动保存。`;
+          "PDF 已导入。点击“打开阅读”会立即使用浏览器原生引擎显示。";
       }
 
       async function importOfficeAttachment(file) {
@@ -12640,45 +13908,21 @@
       });
 
       fitBtn.addEventListener("click", fitView);
-      pdfReaderBody.addEventListener(
-        "touchstart",
-        event => {
-          const stylusTouch = [...event.changedTouches].some(touch =>
-            isStylusLikeTouch(touch, "pdf")
-          );
-          if (stylusTouch) {
-            event.preventDefault();
-            event.stopPropagation();
-          }
-        },
-        { capture: true, passive: false }
-      );
-
-      pdfReaderBody.addEventListener(
-        "touchmove",
-        event => {
-          const stylusTouch = [...event.changedTouches].some(touch =>
-            isStylusLikeTouch(touch, "pdf")
-          );
-          if (stylusTouch) {
-            event.preventDefault();
-            event.stopPropagation();
-          }
-        },
-        { capture: true, passive: false }
-      );
-
       pdfReaderPanBtn.addEventListener("click", () => {
+        if (pdfReaderMode === "native") return;
         setPdfReaderTool("pan");
       });
+
       pdfReaderPenBtn.addEventListener("click", () => {
-        setPdfReaderTool("pen");
+        enterPdfAnnotationMode("pen");
       });
+
       pdfReaderHighlightBtn.addEventListener("click", () => {
-        setPdfReaderTool("highlight");
+        enterPdfAnnotationMode("highlight");
       });
+
       pdfReaderEraserBtn.addEventListener("click", () => {
-        setPdfReaderTool("eraser");
+        enterPdfAnnotationMode("eraser");
       });
 
       pdfReaderColor.addEventListener("input", () => {
@@ -13087,6 +14331,11 @@
               theme: imported.theme || "light"
             };
             applyTheme(state.theme);
+            const doc = currentDocument();
+            if (doc) {
+              doc.state = serializeCurrentState();
+            }
+            await migrateIncrementalStores();
             await migrateEmbeddedBinaryAssets();
             saveState();
             applyTransform();
@@ -13356,7 +14605,6 @@
         // 不在正在落笔时强制取消指针，避免笔迹被截断。
         if (!currentStroke && !laserStroke && eraserPointerId === null) {
           cancelDrawingTouchPan();
-          touchEventPanState = null;
           panState = null;
           workspace.classList.remove("panning");
           document.body.classList.remove("inking-active");
@@ -13669,15 +14917,13 @@
 
         for (const stroke of state.drawings || []) {
           if (!stroke.points?.length) continue;
-          const xs = stroke.points.map(point => point.x);
-          const ys = stroke.points.map(point => point.y);
-          const padding = Math.max(4, stroke.baseWidth || 6);
-          boxes.push({
-            left: Math.min(...xs) - padding,
-            top: Math.min(...ys) - padding,
-            right: Math.max(...xs) + padding,
-            bottom: Math.max(...ys) + padding
-          });
+          const bounds =
+            stroke.bounds ||
+            computeDrawingBounds(
+              stroke.points,
+              stroke.baseWidth
+            );
+          boxes.push(bounds);
         }
 
         if (!boxes.length) return;
@@ -13695,7 +14941,7 @@
         state.panX = (workspace.clientWidth - width * state.scale) / 2 - minX * state.scale;
         state.panY = (workspace.clientHeight - height * state.scale) / 2 - minY * state.scale;
         applyTransform();
-        autosave();
+        autosaveViewState();
       }
 
       function saveState() {
@@ -13707,12 +14953,13 @@
 
       let autosaveTimer = null;
       let inkSaveIdleHandle = null;
-      let historyIdleHandle = null;
+      let inkQuietTimer = null;
+      let lastInkActivityAt = 0;
       let documentListRefreshTimer = null;
 
       function scheduleDocumentListRefresh() {
         clearTimeout(documentListRefreshTimer);
-        documentListRefreshTimer = setTimeout(renderDocumentList, 900);
+        documentListRefreshTimer = setTimeout(renderDocumentList, 2500);
       }
 
       function cancelIdleTask(handle) {
@@ -13721,29 +14968,70 @@
         else clearTimeout(handle);
       }
 
-      function scheduleIdleTask(callback, timeout = 1800) {
+      function scheduleIdleTask(callback) {
         if ("requestIdleCallback" in window) {
-          return requestIdleCallback(callback, { timeout });
+          return requestIdleCallback(callback);
         }
-        return setTimeout(callback, Math.min(700, timeout));
+        return setTimeout(callback, 700);
+      }
+
+      function browserHasPendingInput() {
+        try {
+          return Boolean(
+            navigator.scheduling?.isInputPending?.({
+              includeContinuous: true
+            })
+          );
+        } catch {
+          return false;
+        }
+      }
+
+      function userIsInteracting() {
+        return Boolean(
+          currentStroke ||
+          laserStroke ||
+          eraserPointerId !== null ||
+          pdfReaderAnnotationSession ||
+          drawingTouchPanState ||
+          panState ||
+          dragState ||
+          resizeState ||
+          browserHasPendingInput()
+        );
       }
 
       function autosave() {
         const history = currentHistory();
-        if (history) history.dirty = true;
+        if (history) {
+          history.dirty = true;
+          history.dirtyAt = Date.now();
+        }
         updateHistoryButtons();
         clearTimeout(autosaveTimer);
-        autosaveTimer = setTimeout(saveState, 420);
+        autosaveTimer = setTimeout(saveState, 520);
+      }
+
+      function scheduleQuietInkPersist() {
+        clearTimeout(inkQuietTimer);
+        cancelIdleTask(inkSaveIdleHandle);
+
+        inkQuietTimer = setTimeout(() => {
+          if (userIsInteracting()) {
+            scheduleQuietInkPersist();
+            return;
+          }
+
+          persistLibrary();
+          scheduleDocumentListRefresh();
+        }, 1400);
       }
 
       function autosaveInk() {
-        const history = currentHistory();
-        if (history) history.dirty = true;
         updateHistoryButtons();
 
         clearTimeout(autosaveTimer);
-        cancelIdleTask(inkSaveIdleHandle);
-        cancelIdleTask(historyIdleHandle);
+        lastInkActivityAt = performance.now();
 
         const doc = currentDocument();
         if (doc) {
@@ -13751,23 +15039,23 @@
           doc.updatedAt = nowIso();
         }
 
-        inkSaveIdleHandle = scheduleIdleTask(() => {
-          inkSaveIdleHandle = null;
-          persistLibrary();
-          scheduleDocumentListRefresh();
-        }, 1200);
+        scheduleQuietInkPersist();
 
-        historyIdleHandle = scheduleIdleTask(() => {
-          historyIdleHandle = null;
-          if (
-            !currentStroke &&
-            !pdfReaderAnnotationSession &&
-            !touchEventPanState &&
-            !panState
-          ) {
-            commitHistory();
-          }
-        }, 3200);
+        // 不再在 3.2 秒后自动 JSON.stringify 全部手写内容。
+        // 用户主动点击撤销时，才生成一次完整历史快照。
+      }
+
+      function autosaveViewState() {
+        clearTimeout(autosaveTimer);
+        lastInkActivityAt = performance.now();
+
+        const doc = currentDocument();
+        if (doc) {
+          doc.state = serializeCurrentState();
+          doc.updatedAt = nowIso();
+        }
+
+        scheduleQuietInkPersist();
       }
 
       function normalizeLoadedLibrary(parsed) {
@@ -13785,7 +15073,7 @@
         if (!ids.length) throw new Error("empty library");
 
         return {
-          version: 15,
+          version: 16,
           currentDocumentId: documents[parsed.currentDocumentId]
             ? parsed.currentDocumentId
             : ids[0],
@@ -13866,7 +15154,7 @@
 
         const doc = createDocumentRecord(initialTitle, initialState);
         return {
-          version: 15,
+          version: 16,
           currentDocumentId: doc.id,
           documents: { [doc.id]: doc },
           settings: { sidebarOpen: true }
@@ -13924,8 +15212,11 @@
       }
 
       await loadState();
+      await migrateIncrementalStores();
       await migrateEmbeddedBinaryAssets();
-      state = ensureStateCollections(state);
+      state = ensureStateCollections(
+        cloneJson(currentDocument().state)
+      );
       initializeHistoryForCurrent({ force: true });
       requestPersistentBrowserStorage().finally(() => {
         refreshBrowserStorageStatus({ force: true });
@@ -13949,16 +15240,30 @@
       renderTabletMindmapToolbar();
       requestAnimationFrame(() => arrangeFloatingToolbars());
 
-      document.addEventListener("visibilitychange", () => {
+
+      document.addEventListener("visibilitychange", async () => {
         if (document.visibilityState !== "hidden") return;
+
         clearTimeout(autosaveTimer);
-        saveState();
+        clearTimeout(inkQuietTimer);
+        cancelIdleTask(inkSaveIdleHandle);
+        clearTimeout(persistDispatchTimer);
+
+        updateCurrentDocument();
+        persistRequested = true;
+        await awaitPendingIncrementalWrites();
+        await flushLibraryPersistence();
       });
 
       window.addEventListener("pagehide", () => {
         clearTimeout(autosaveTimer);
+        clearTimeout(inkQuietTimer);
+        cancelIdleTask(inkSaveIdleHandle);
+        clearTimeout(persistDispatchTimer);
+
         updateCurrentDocument();
-        persistLibrary();
+        persistRequested = true;
+        flushLibraryPersistence();
       });
     })();
   </script>

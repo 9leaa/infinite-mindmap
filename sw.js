@@ -1,12 +1,11 @@
-const CACHE_NAME = "mindmap-v15-8";
+const CACHE_NAME = "mindmap-v16-stable";
+
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./icon-192.png",
-  "./icon-512.png",
-  "./vendor/pdf.min.mjs",
-  "./vendor/pdf.worker.min.mjs"
+  "./icon-512.png"
 ];
 
 self.addEventListener("install", event => {
@@ -29,22 +28,66 @@ self.addEventListener("activate", event => {
   self.clients.claim();
 });
 
+function isNavigation(request) {
+  return (
+    request.mode === "navigate" ||
+    request.destination === "document"
+  );
+}
+
+function isStaticAsset(request) {
+  const url = new URL(request.url);
+  return (
+    ["script", "worker", "style", "image", "manifest"].includes(
+      request.destination
+    ) ||
+    /\.(?:mjs|js|css|png|jpg|jpeg|webp|svg|webmanifest)$/i.test(
+      url.pathname
+    )
+  );
+}
+
 self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  if (isNavigation(request)) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache =>
+              cache.put("./index.html", copy)
+            );
+          }
+          return response;
+        })
+        .catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  if (isStaticAsset(request)) {
+    event.respondWith(
+      caches.match(request).then(cached => {
+        if (cached) return cached;
+
+        return fetch(request).then(response => {
+          if (!response.ok) return response;
+
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache =>
+            cache.put(request, copy)
+          );
+          return response;
+        });
+      })
+    );
+    return;
+  }
 
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        if (response && response.ok && event.request.url.startsWith(self.location.origin)) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-        }
-        return response;
-      })
-      .catch(() =>
-        caches.match(event.request).then(
-          cached => cached || caches.match("./index.html")
-        )
-      )
+    fetch(request).catch(() => caches.match(request))
   );
 });

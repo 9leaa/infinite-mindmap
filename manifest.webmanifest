@@ -1,7 +1,7 @@
 {
-  "name": "无限画布思维导图 V15.8",
+  "name": "无限画布思维导图 V16",
   "short_name": "无限画布",
-  "description": "PDF/Office 独立 Blob 存储、空闲期手写保存、虚拟 PDF 页面与 Apple Pencil 批注。",
+  "description": "增量手写存储、浏览器原生 PDF 快速阅读、按需批注引擎、Apple Pencil 与单指平移的无限画布笔记应用。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
