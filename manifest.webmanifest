@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.1",
+  "name": "无限画布思维导图 V18.2",
   "short_name": "无限画布",
-  "description": "修复笔迹抬笔消失、PDF遮罩与书写滚动、PDF宽度、节点/子节点区分和一父多子连续连接。",
-  "start_url": "./?v=18.1",
+  "description": "修复 iPad PDF 短笔迹、Pointer/Touch 混合采样、单点笔迹、页面渲染打断和页码提前跳转。",
+  "start_url": "./?v=18.2",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",

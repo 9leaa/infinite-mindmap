@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.1 稳定修复版</title>
+  <title>无限画布思维导图 · V18.2 Pencil 连续采样修复版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -5727,11 +5727,11 @@
         );
       })();
       const PDFJS_MODULE_URL = new URL(
-        "./vendor/pdf.mjs?v=18.1",
+        "./vendor/pdf.mjs?v=18.2",
         document.baseURI
       ).href;
       const PDFJS_WORKER_URL = new URL(
-        "./vendor/pdf.worker.mjs?v=18.1",
+        "./vendor/pdf.worker.mjs?v=18.2",
         document.baseURI
       ).href;
       const PDFJS_CMAP_URL = new URL(
@@ -5754,6 +5754,8 @@
       let pdfReaderAnnotationSession = null;
       let pdfReaderTouchAnnotationSession = null;
       let pdfReaderEraserPointerId = null;
+      let pdfReaderGlobalPointerGuardsBound = false;
+      const handledPdfPointerEvents = new WeakSet();
       let pdfReaderScrollLock = null;
       let pdfReaderResizeState = null;
       let pdfReaderNotesTimer = null;
@@ -6280,7 +6282,11 @@
         maxLongTaskMs: 0,
         lastLongTaskAt: 0,
         tileRenders: 0,
-        pdfRenders: 0
+        pdfRenders: 0,
+        pdfPointerSamples: 0,
+        pdfTouchSamples: 0,
+        pdfHybridSessions: 0,
+        pdfDeferredRenders: 0
       };
 
       function updatePerformanceStatus() {
@@ -9783,17 +9789,34 @@
       function updatePdfReaderCurrentPageFromScroll() {
         pdfReaderScrollFrame = null;
         if (!activePdfDocument) return;
-        const bodyRect = pdfReaderBody.getBoundingClientRect();
-        const targetY = bodyRect.top + Math.min(180, bodyRect.height * 0.3);
-        let bestPage = pdfReaderCurrentPageNumber;
-        let bestDistance = Infinity;
 
-        for (const pageEl of pdfReaderBody.querySelectorAll(".pdf-reader-page")) {
+        const bodyRect = pdfReaderBody.getBoundingClientRect();
+        const focusY = bodyRect.top + bodyRect.height * 0.42;
+        let bestPage = pdfReaderCurrentPageNumber;
+        let bestVisibleHeight = -1;
+        let bestCenterDistance = Infinity;
+
+        for (const pageEl of pdfReaderBody.querySelectorAll(
+          ".pdf-reader-page"
+        )) {
           const rect = pageEl.getBoundingClientRect();
-          if (rect.bottom < bodyRect.top || rect.top > bodyRect.bottom) continue;
-          const distance = Math.abs(rect.top - targetY);
-          if (distance < bestDistance) {
-            bestDistance = distance;
+          const visibleTop = Math.max(rect.top, bodyRect.top);
+          const visibleBottom = Math.min(rect.bottom, bodyRect.bottom);
+          const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+          if (visibleHeight <= 0) continue;
+
+          const visibleCenter = (visibleTop + visibleBottom) / 2;
+          const centerDistance = Math.abs(visibleCenter - focusY);
+
+          if (
+            visibleHeight > bestVisibleHeight + 1 ||
+            (
+              Math.abs(visibleHeight - bestVisibleHeight) <= 1 &&
+              centerDistance < bestCenterDistance
+            )
+          ) {
+            bestVisibleHeight = visibleHeight;
+            bestCenterDistance = centerDistance;
             bestPage = Number(pageEl.dataset.pageNumber);
           }
         }
@@ -9988,7 +10011,7 @@
         { startIndex = 1 } = {}
       ) {
         const points = stroke.points || [];
-        if (points.length < 2) return;
+        if (!points.length) return;
 
         const visual = pdfStrokeVisual(stroke, canvas);
         context.save();
@@ -9997,6 +10020,30 @@
         context.lineCap = "round";
         context.lineJoin = "round";
         context.globalCompositeOperation = "source-over";
+
+        if (points.length === 1) {
+          const point = points[0];
+          const pressure =
+            stroke.tool === "highlight" ? 1 : (point.p ?? 0.5);
+          const radius =
+            visual.width *
+            (stroke.tool === "highlight"
+              ? 1
+              : pressureWidthFactor(pressure)) /
+            2;
+          context.fillStyle = visual.color;
+          context.beginPath();
+          context.arc(
+            point.x * canvas.clientWidth,
+            point.y * canvas.clientHeight,
+            Math.max(0.65, radius),
+            0,
+            Math.PI * 2
+          );
+          context.fill();
+          context.restore();
+          return;
+        }
 
         for (
           let index = Math.max(1, startIndex);
@@ -10225,7 +10272,7 @@
 
       function finishPdfAnnotationSession(session) {
         if (!session) return;
-        if (session.stroke?.points?.length >= 2) {
+        if (session.stroke?.points?.length >= 1) {
           const asset = currentPdfAsset();
           if (asset) {
             pdfAnnotationList(asset, session.pageNumber)
@@ -10247,6 +10294,7 @@
         clearPdfAnnotationLiveCanvas(session.canvas);
         redrawPdfAnnotationCanvas(session.pageNumber);
         unlockPdfReaderScrollForInk(session.canvas);
+        resumePendingPdfPageRenderAfterInk(session.pageNumber);
       }
 
       function touchSampleAsPdfPointer(touch, event) {
@@ -10263,18 +10311,149 @@
         };
       }
 
+      function activePdfInkSessionForPage(pageNumber) {
+        return Boolean(
+          (
+            pdfReaderAnnotationSession &&
+            pdfReaderAnnotationSession.pageNumber === pageNumber
+          ) ||
+          (
+            pdfReaderTouchAnnotationSession &&
+            pdfReaderTouchAnnotationSession.pageNumber === pageNumber
+          )
+        );
+      }
+
+      function deferPdfPageRenderUntilInkEnds(
+        pageEl,
+        quality = "preview"
+      ) {
+        const current = pageEl.dataset.pendingAfterInk || "";
+        if (
+          quality === "detail" ||
+          !current
+        ) {
+          pageEl.dataset.pendingAfterInk = quality;
+        }
+        performanceDiagnostics.pdfDeferredRenders += 1;
+      }
+
+      function resumePendingPdfPageRenderAfterInk(pageNumber) {
+        const pageEl = pdfReaderBody.querySelector(
+          `.pdf-reader-page[data-page-number="${pageNumber}"]`
+        );
+        if (!pageEl) return;
+
+        const quality = pageEl.dataset.pendingAfterInk;
+        if (!quality) return;
+
+        delete pageEl.dataset.pendingAfterInk;
+        enqueuePdfReaderPage(
+          pageNumber,
+          pageEl,
+          quality === "detail" ? 10000 : 6000,
+          quality
+        );
+      }
+
+      function appendPdfPointerEventSamples(session, event) {
+        const samples = pointerSamplesWithFallback(event);
+        performanceDiagnostics.pdfPointerSamples += samples.length;
+        for (const sample of samples) {
+          appendPdfAnnotationSample(session, sample);
+        }
+      }
+
+      function processPdfAnnotationPointerMove(event) {
+        const session = pdfReaderAnnotationSession;
+        if (!session || session.pointerId !== event.pointerId) {
+          return false;
+        }
+        if (handledPdfPointerEvents.has(event)) return true;
+        handledPdfPointerEvents.add(event);
+
+        event.preventDefault();
+        event.stopPropagation();
+        preservePdfReaderScrollPosition();
+        appendPdfPointerEventSamples(session, event);
+        drawPdfAnnotationSessionIncrement(session);
+        preservePdfReaderScrollPosition();
+        return true;
+      }
+
+      function finishPdfAnnotationPointerEvent(event) {
+        const session = pdfReaderAnnotationSession;
+        if (session && session.pointerId === event.pointerId) {
+          if (!handledPdfPointerEvents.has(event)) {
+            handledPdfPointerEvents.add(event);
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (event.type === "pointerup") {
+              appendPdfPointerEventSamples(session, event);
+              drawPdfAnnotationSessionIncrement(session);
+            }
+          }
+
+          pdfReaderAnnotationSession = null;
+          if (pdfReaderTouchAnnotationSession === session) {
+            pdfReaderTouchAnnotationSession = null;
+          }
+          finishPdfAnnotationSession(session);
+          return true;
+        }
+
+        if (pdfReaderEraserPointerId === event.pointerId) {
+          if (!handledPdfPointerEvents.has(event)) {
+            handledPdfPointerEvents.add(event);
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          pdfReaderEraserPointerId = null;
+          unlockPdfReaderScrollForInk(pdfReaderScrollLock?.canvas);
+          return true;
+        }
+
+        return false;
+      }
+
+      function ensurePdfReaderGlobalPointerGuards() {
+        if (pdfReaderGlobalPointerGuardsBound) return;
+        pdfReaderGlobalPointerGuardsBound = true;
+
+        window.addEventListener(
+          "pointermove",
+          event => {
+            processPdfAnnotationPointerMove(event);
+          },
+          { capture: true, passive: false }
+        );
+
+        window.addEventListener(
+          "pointerup",
+          event => {
+            finishPdfAnnotationPointerEvent(event);
+          },
+          { capture: true, passive: false }
+        );
+
+        window.addEventListener(
+          "pointercancel",
+          event => {
+            finishPdfAnnotationPointerEvent(event);
+          },
+          { capture: true, passive: false }
+        );
+      }
+
       function bindPdfAnnotationCanvas(canvas, pageNumber) {
+        ensurePdfReaderGlobalPointerGuards();
+
         canvas.style.pointerEvents =
           pdfReaderTool === "pan" ? "none" : "auto";
 
         canvas.addEventListener("pointerdown", event => {
           if (pdfReaderTool === "pan") return;
-          if (
-            event.pointerType === "touch" &&
-            !USE_IOS_TOUCH_PAN_FALLBACK
-          ) {
-            return;
-          }
           if (event.pointerType === "touch") return;
           if (event.pointerType === "mouse" && event.button !== 0) return;
 
@@ -10291,9 +10470,35 @@
             try {
               canvas.setPointerCapture(event.pointerId);
             } catch {
-              // 不影响擦除。
+              // Window-level guards still close the eraser session.
             }
             return;
+          }
+
+          // Some iPad WebKit builds emit touchstart before pointerdown.
+          // Reuse the same stroke instead of creating a competing session.
+          if (
+            pdfReaderTouchAnnotationSession &&
+            pdfReaderTouchAnnotationSession.canvas === canvas &&
+            !pdfReaderTouchAnnotationSession.eraser
+          ) {
+            const session = pdfReaderTouchAnnotationSession;
+            session.pointerId = event.pointerId;
+            pdfReaderAnnotationSession = session;
+            appendPdfPointerEventSamples(session, event);
+            drawPdfAnnotationSessionIncrement(session);
+            lockPdfReaderScrollForInk(canvas);
+            return;
+          }
+
+          // Finish a stale session before starting a new Pencil contact.
+          if (pdfReaderAnnotationSession) {
+            const stale = pdfReaderAnnotationSession;
+            pdfReaderAnnotationSession = null;
+            if (pdfReaderTouchAnnotationSession === stale) {
+              pdfReaderTouchAnnotationSession = null;
+            }
+            finishPdfAnnotationSession(stale);
           }
 
           const stroke = createPdfAnnotationStroke(
@@ -10308,84 +10513,64 @@
             pageNumber,
             canvas,
             stroke,
-            renderedCount: 1
+            renderedCount: 0
           };
           clearPdfAnnotationLiveCanvas(canvas);
+          drawPdfAnnotationSessionIncrement(
+            pdfReaderAnnotationSession
+          );
           lockPdfReaderScrollForInk(canvas);
 
           try {
             canvas.setPointerCapture(event.pointerId);
           } catch {
-            // 不影响书写。
+            // Window-level move/up guards remain active.
           }
         });
 
         canvas.addEventListener("pointermove", event => {
-          const session = pdfReaderAnnotationSession;
-          if (!session || session.pointerId !== event.pointerId) {
-            if (
-              pdfReaderTool === "eraser" &&
-              pdfReaderEraserPointerId === event.pointerId &&
-              event.pointerType !== "touch" &&
-              event.buttons
-            ) {
-              event.preventDefault();
-              event.stopPropagation();
-              lockPdfReaderScrollForInk(canvas);
-              erasePdfAnnotationAt(
-                pageNumber,
-                pdfPagePointFromEvent(event, canvas),
-                canvas
-              );
-              preservePdfReaderScrollPosition();
-            }
-            return;
-          }
+          if (processPdfAnnotationPointerMove(event)) return;
 
-          event.preventDefault();
-          event.stopPropagation();
-          preservePdfReaderScrollPosition();
-          const samples =
-            typeof event.getCoalescedEvents === "function"
-              ? event.getCoalescedEvents()
-              : [event];
-
-          for (const sample of samples) {
-            appendPdfAnnotationSample(session, sample);
+          if (
+            pdfReaderTool === "eraser" &&
+            pdfReaderEraserPointerId === event.pointerId &&
+            event.pointerType !== "touch" &&
+            event.buttons
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            lockPdfReaderScrollForInk(canvas);
+            erasePdfAnnotationAt(
+              pageNumber,
+              pdfPagePointFromEvent(event, canvas),
+              canvas
+            );
+            preservePdfReaderScrollPosition();
           }
-          drawPdfAnnotationSessionIncrement(session);
-          preservePdfReaderScrollPosition();
         });
 
-        const finishPointer = event => {
-          const session = pdfReaderAnnotationSession;
-          if (session && session.pointerId === event.pointerId) {
-            event.preventDefault();
-            event.stopPropagation();
-            pdfReaderAnnotationSession = null;
-            finishPdfAnnotationSession(session);
-            return;
-          }
+        canvas.addEventListener(
+          "pointerup",
+          finishPdfAnnotationPointerEvent
+        );
+        canvas.addEventListener(
+          "pointercancel",
+          finishPdfAnnotationPointerEvent
+        );
 
+        canvas.addEventListener("lostpointercapture", event => {
+          // Do not end a Pencil stroke here. iPad can lose capture
+          // transiently while still emitting pointer/touch samples.
           if (pdfReaderEraserPointerId === event.pointerId) {
-            event.preventDefault();
-            event.stopPropagation();
-            pdfReaderEraserPointerId = null;
-            unlockPdfReaderScrollForInk(canvas);
+            preservePdfReaderScrollPosition();
           }
-        };
-
-        canvas.addEventListener("pointerup", finishPointer);
-        canvas.addEventListener("pointercancel", finishPointer);
-        canvas.addEventListener("lostpointercapture", finishPointer);
+        });
 
         canvas.addEventListener(
           "touchstart",
           event => {
             if (
               pdfReaderTool === "pan" ||
-              pdfReaderAnnotationSession ||
-              pdfReaderTouchAnnotationSession ||
               event.touches.length !== 1
             ) {
               return;
@@ -10398,6 +10583,28 @@
             event.stopPropagation();
             const sample = touchSampleAsPdfPointer(touch, event);
             const point = pdfPagePointFromEvent(sample, canvas);
+
+            // Hybrid bridge: on iPad, Pointer Events and Touch Events may
+            // both describe the same Pencil. Feed both into one stroke.
+            if (
+              pdfReaderAnnotationSession &&
+              pdfReaderAnnotationSession.canvas === canvas
+            ) {
+              const session = pdfReaderAnnotationSession;
+              session.identifier = touch.identifier;
+              pdfReaderTouchAnnotationSession = session;
+              performanceDiagnostics.pdfHybridSessions += 1;
+              performanceDiagnostics.pdfTouchSamples += 1;
+              if (session.stroke) {
+                appendPdfAnnotationSample(session, sample);
+                drawPdfAnnotationSessionIncrement(session);
+              }
+              lockPdfReaderScrollForInk(canvas);
+              preservePdfReaderScrollPosition();
+              return;
+            }
+
+            if (pdfReaderTouchAnnotationSession) return;
 
             if (pdfReaderTool === "eraser") {
               pdfReaderTouchAnnotationSession = {
@@ -10426,9 +10633,12 @@
               pageNumber,
               canvas,
               stroke,
-              renderedCount: 1
+              renderedCount: 0
             };
             clearPdfAnnotationLiveCanvas(canvas);
+            drawPdfAnnotationSessionIncrement(
+              pdfReaderTouchAnnotationSession
+            );
             lockPdfReaderScrollForInk(canvas);
           },
           { passive: false }
@@ -10449,6 +10659,8 @@
             event.stopPropagation();
             preservePdfReaderScrollPosition();
             const sample = touchSampleAsPdfPointer(touch, event);
+            performanceDiagnostics.pdfTouchSamples += 1;
+
             if (session.eraser) {
               erasePdfAnnotationAt(
                 session.pageNumber,
@@ -10475,9 +10687,25 @@
 
           event.preventDefault();
           event.stopPropagation();
+
+          const finalTouch = [...(event.changedTouches || [])].find(
+            item => item.identifier === session.identifier
+          );
+          if (finalTouch && !session.eraser && session.stroke) {
+            performanceDiagnostics.pdfTouchSamples += 1;
+            const sample = touchSampleAsPdfPointer(finalTouch, event);
+            appendPdfAnnotationSample(session, sample);
+            drawPdfAnnotationSessionIncrement(session);
+          }
+
           pdfReaderTouchAnnotationSession = null;
+          if (pdfReaderAnnotationSession === session) {
+            pdfReaderAnnotationSession = null;
+          }
+
           if (session.eraser) {
             unlockPdfReaderScrollForInk(session.canvas);
+            resumePendingPdfPageRenderAfterInk(session.pageNumber);
           } else {
             finishPdfAnnotationSession(session);
           }
@@ -10490,8 +10718,14 @@
           passive: false
         });
 
-        canvas.addEventListener("contextmenu", event => event.preventDefault());
-        canvas.addEventListener("selectstart", event => event.preventDefault());
+        canvas.addEventListener(
+          "contextmenu",
+          event => event.preventDefault()
+        );
+        canvas.addEventListener(
+          "selectstart",
+          event => event.preventDefault()
+        );
       }
 
       function enqueuePdfReaderPage(
@@ -10501,6 +10735,10 @@
         quality = "preview"
       ) {
         if (!pageEl || !activePdfDocument) return;
+        if (activePdfInkSessionForPage(pageNumber)) {
+          deferPdfPageRenderUntilInkEnds(pageEl, quality);
+          return;
+        }
         const key = [
           pageNumber,
           quality,
@@ -10646,6 +10884,11 @@
           await renderTask.promise;
           pdfReaderPageRenders.delete(taskKey);
           if (!pageEl.isConnected) return;
+
+          if (activePdfInkSessionForPage(pageNumber)) {
+            deferPdfPageRenderUntilInkEnds(pageEl, quality);
+            return;
+          }
 
           const oldCanvas = pageEl.querySelector(
             ".pdf-reader-page-canvas"
@@ -12512,10 +12755,33 @@
         );
       }
 
+      function pointerSamplesWithFallback(event) {
+        let coalesced = [];
+
+        if (typeof event.getCoalescedEvents === "function") {
+          try {
+            coalesced = Array.from(event.getCoalescedEvents() || []);
+          } catch {
+            coalesced = [];
+          }
+        }
+
+        if (!coalesced.length) return [event];
+
+        const samples = [...coalesced];
+        const last = samples[samples.length - 1];
+        const differsFromEvent =
+          !last ||
+          Math.abs((last.clientX || 0) - (event.clientX || 0)) > 0.01 ||
+          Math.abs((last.clientY || 0) - (event.clientY || 0)) > 0.01 ||
+          Math.abs((last.timeStamp || 0) - (event.timeStamp || 0)) > 0.5;
+
+        if (differsFromEvent) samples.push(event);
+        return samples;
+      }
+
       function appendCoalescedDrawingPoints(event, targetStroke) {
-        const events = typeof event.getCoalescedEvents === "function"
-          ? event.getCoalescedEvents()
-          : [event];
+        const events = pointerSamplesWithFallback(event);
 
         const minDistance = Math.max(0.35, (targetStroke.baseWidth || 6) * 0.035);
 
@@ -12886,9 +13152,7 @@
       }
 
       function eraseAt(event) {
-        const samples = typeof event.getCoalescedEvents === "function"
-          ? event.getCoalescedEvents()
-          : [event];
+        const samples = pointerSamplesWithFallback(event);
 
         for (const sample of samples) {
           const point = screenToWorld(sample.clientX, sample.clientY);
@@ -13440,6 +13704,10 @@
           event.preventDefault();
           event.stopPropagation();
 
+          if (event.type === "pointerup") {
+            appendCoalescedDrawingPoints(event, currentStroke);
+          }
+
           cancelAnimationFrame(currentStrokeRenderFrame);
           currentStrokeRenderFrame = null;
           flushCurrentStrokeRender();
@@ -13496,6 +13764,10 @@
         if (laserStroke && laserStroke.pointerId === event.pointerId) {
           event.preventDefault();
           event.stopPropagation();
+          if (event.type === "pointerup") {
+            appendCoalescedDrawingPoints(event, laserStroke);
+            scheduleLaserRender();
+          }
           document.body.classList.remove("inking-active");
           laserClearTimer = setTimeout(() => {
             laserStroke = null;
@@ -14298,12 +14570,15 @@
       }, true);
 
       workspace.addEventListener("lostpointercapture", event => {
+        // iPad WebKit may transiently lose pointer capture while the Pencil
+        // is still down. Window-level pointerup/pointercancel listeners are
+        // the authoritative end of the stroke.
         if (
           currentStroke?.pointerId === event.pointerId ||
           laserStroke?.pointerId === event.pointerId ||
           eraserPointerId === event.pointerId
         ) {
-          releaseCanvasToolPointer(event);
+          document.body.classList.add("inking-active");
         }
       }, true);
 

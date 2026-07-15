@@ -1,71 +1,57 @@
-# 无限画布思维导图 V18.1
+# 无限画布思维导图 V18.2
 
-V18.1 是针对真实 iPad 测试反馈的修复版，仍然使用原项目的自研画布和压感笔引擎，不包含 Excalidraw。
+V18.2 继续使用原项目的自研画布、节点系统和压感笔引擎，不包含 Excalidraw。
 
-## 修复内容
+## 本次主要修复
 
-### 1. 抬笔后笔迹消失
+### PDF 偶发只写出一小段
 
-V18 在抬笔时先调用 Tile 提交，再清除 `currentStroke`。但 Tile 索引函数会主动忽略仍等于 `currentStroke` 的笔迹，因此这一笔没有进入静态 Tile。
+根因不是线宽或压感，而是输入采样链存在四个缺口：
 
-V18.1 改为：
+1. iPad WebKit 的 `getCoalescedEvents()` 有时存在但返回空数组，旧代码会把当前 `pointermove` 一并丢弃。
+2. `pointerup` 的最终坐标没有加入笔迹。
+3. `lostpointercapture` 会立即结束笔迹。
+4. Pointer Events 已经开始后，Touch Events 后备通道不会再接管同一支 Pencil。
 
-```text
-结束当前笔迹状态
-→ 加入 Tile 索引
-→ 标记相关 Tile 为脏
-→ 清除交互 Canvas
+V18.2 改为：
+
+- 空 coalesced 数组自动回退到原始 PointerEvent
+- 保存 pointerup 最终坐标
+- window 级 pointermove/up/cancel 保护
+- lostpointercapture 不再直接截断
+- Pointer 与 stylus Touch Events 写入同一条笔迹
+- touchend 保存 changedTouches 最终坐标
+- 单点和极短笔画也会保存
+
+### PDF 页面升级不再打断书写
+
+当前页从预览升级为高清时，如果 Pencil 正在该页书写，升级任务会暂缓。抬笔后再替换页面和调整批注 Canvas，避免书写过程中 Canvas 被重设尺寸。
+
+### 页码判断
+
+页面状态改为选择当前视口中可见面积最大的页面，避免正文仍主要显示第6页时顶部提前显示 `7/12`。
+
+### 主画布同步修复
+
+主画布也使用了相同的 coalesced 采样方式。V18.2 同步增加空数组回退、pointerup 最终坐标和 lostpointercapture 保护。
+
+## 诊断
+
+控制台执行：
+
+```js
+window.__mindmapRuntimeStats()
 ```
 
-### 2. PDF 一直显示“正在显示第 x 页”
+新增字段：
 
-PDF 主页面 Canvas 已完成，但代码要等批注层初始化完成后才隐藏白色加载遮罩。批注层只要出现异常，正文就会一直被半透明遮罩盖住。
+- `pdfPointerSamples`
+- `pdfTouchSamples`
+- `pdfHybridSessions`
+- `pdfDeferredRenders`
 
-V18.1 改为：
-
-```text
-PDF 页面完成
-→ 立即显示正文并关闭遮罩
-→ 再独立初始化批注层
-```
-
-批注层异常不会再遮住已经完成的 PDF 页面。
-
-### 3. PDF 写字时页面乱动
-
-- Pencil pointerdown 后锁定当前 PDF 滚动位置。
-- 书写期间 PDF 容器暂时禁止滚动和 overscroll。
-- 每次采样后恢复锁定位置。
-- 抬笔、取消或失去捕获时恢复正常滚动。
-- iPad 增加 `touchType=stylus` Touch Events 后备通道。
-- 普通手指在未书写时仍然可以滚动 PDF。
-
-### 4. PDF 拖动宽度上限
-
-旧版硬编码为：
+## 部署地址
 
 ```text
-最大 72vw
-```
-
-V18.1 允许拖到约 98vw；超过 82vw 后自动隐藏左侧笔记库，并允许画布区域缩小至接近零宽。拖动监听放到 `window` 层，手指离开窄拖动条后仍然有效。
-
-### 5. “节点”和“子节点”功能混在一起
-
-- “节点”：始终创建独立根节点。
-- “子节点”：必须先选择父节点；未选择时只显示提示。
-- 同时修复 `focusTitle()` 中引用未定义变量 `node` 的错误。
-
-### 6. 一个节点连续指向多个节点
-
-完成一次连接后不再自动退出连接模式，也不再清空父节点。可以继续点击多个目标节点，将它们都设为同一父节点的直接子节点。
-
-## 部署
-
-必须完整覆盖 `index.html`、`sw.js` 和 `manifest.webmanifest`。PDF vendor 资源与 V18 相同。
-
-访问：
-
-```text
-https://9leaa.github.io/infinite-mindmap/?v=18.1
+https://9leaa.github.io/infinite-mindmap/?v=18.2
 ```
