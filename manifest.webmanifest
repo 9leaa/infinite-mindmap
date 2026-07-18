@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.4",
+  "name": "无限画布思维导图 V18.4.1",
   "short_name": "无限画布",
-  "description": "新增分文件 ZIP 安全备份与恢复，避免 PDF 和附件转 Base64 导致 Invalid string length。",
-  "start_url": "./?v=18.4",
+  "description": "修复 File System Access API 不接受复合扩展名过滤条件的问题；ZIP 备份格式和内容保持不变。",
+  "start_url": "./?v=18.4.1",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",

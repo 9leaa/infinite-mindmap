@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.4 ZIP 安全备份版</title>
+  <title>无限画布思维导图 · V18.4.1 文件选择器热修复版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -5029,12 +5029,12 @@
             <button id="openLocalDocumentBtn" type="button">打开单个笔记</button>
             <label class="side-file-label">
               兼容方式打开
-              <input id="openLocalDocumentInput" type="file" accept=".mindmap.zip,.mindmap-backup.zip,.zip,.json,.mindmap.json,application/zip,application/json" />
+              <input id="openLocalDocumentInput" type="file" accept=".zip,.json,application/zip,application/json" />
             </label>
             <button id="backupLibraryBtn" type="button">备份全部笔记</button>
             <label class="side-file-label">
               导入完整笔记库
-              <input id="importLibraryInput" type="file" accept=".mindmap-backup.zip,.mindmap.zip,.zip,.json,.mindmap.json,application/zip,application/json" />
+              <input id="importLibraryInput" type="file" accept=".zip,.json,application/zip,application/json" />
             </label>
           </div>
           <div class="library-migration-note">
@@ -5920,7 +5920,7 @@
         document.baseURI
       ).href;
       const ZIP_MODULE_URL = new URL(
-        "./vendor/zip.min.mjs?v=18.4",
+        "./vendor/zip.min.mjs?v=18.4.1",
         document.baseURI
       ).href;
       let zipModulePromise = null;
@@ -8207,11 +8207,7 @@
               types: [{
                 description: "Infinite Mindmap ZIP 备份",
                 accept: {
-                  "application/zip": [
-                    ".mindmap.zip",
-                    ".mindmap-backup.zip",
-                    ".zip"
-                  ]
+                  "application/zip": [".zip"]
                 }
               }]
             });
@@ -9244,20 +9240,13 @@
               {
                 description: "Infinite Mindmap ZIP 备份",
                 accept: {
-                  "application/zip": [
-                    ".mindmap.zip",
-                    ".mindmap-backup.zip",
-                    ".zip"
-                  ]
+                  "application/zip": [".zip"]
                 }
               },
               {
                 description: "旧版思维导图 JSON",
                 accept: {
-                  "application/json": [
-                    ".mindmap.json",
-                    ".json"
-                  ]
+                  "application/json": [".json"]
                 }
               }
             ]

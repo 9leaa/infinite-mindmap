@@ -10,7 +10,7 @@
 [问题反馈](https://github.com/9leaa/infinite-mindmap/issues) ·
 [测试报告](./TEST_REPORT.md)
 
-![Version](https://img.shields.io/badge/version-V18.4-2563eb)
+![Version](https://img.shields.io/badge/version-V18.4.1-2563eb)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20iPad%20%7C%20macOS-111827)
 ![Data](https://img.shields.io/badge/data-local--first-16a34a)
 ![Canvas](https://img.shields.io/badge/canvas-custom_engine-7c3aed)
@@ -287,7 +287,7 @@ Infinite Mindmap 是 **Local-first** 应用。
 
 ## 安全备份与恢复
 
-V18.4 将完整备份格式升级为：
+V18.4.1 将完整备份格式升级为：
 
 ```text
 mindmap-library-YYYY-MM-DD.mindmap-backup.zip
@@ -481,7 +481,7 @@ window.__mindmapDiagnostics
 
 ## 版本说明
 
-当前版本：**V18.4**
+当前版本：**V18.4.1**
 
 本版本主要改进：
 
@@ -542,3 +542,25 @@ window.__mindmapDiagnostics
 **Infinite Mindmap — 把结构化思考、自由书写与文档阅读放进同一张画布。**
 
 </div>
+
+
+## V18.4.1 热修复
+
+Chrome 的 File System Access API 要求 `accept` 中填写真实的单一扩展名，例如 `.zip`。  
+`.mindmap-backup.zip`、`.mindmap.zip` 和 `.mindmap.json` 是文件名后缀，不是合法的扩展名过滤条件。
+
+V18.4.1 仅将文件选择器过滤条件改为：
+
+```text
+ZIP  → .zip
+JSON → .json
+```
+
+实际生成的文件名仍然保持：
+
+```text
+mindmap-library-YYYY-MM-DD.mindmap-backup.zip
+笔记名称.mindmap.zip
+```
+
+ZIP 内容、备份结构、恢复流程和旧 JSON 兼容性均未改变。
