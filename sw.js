@@ -1,4 +1,4 @@
-const CACHE_NAME = "mindmap-v18-3-static-1";
+const CACHE_NAME = "mindmap-v18-4-static-1";
 const CORE = [
   "./",
   "./index.html",
@@ -7,7 +7,8 @@ const CORE = [
   "./icon-512.png",
   "./workers/storage-worker.js",
   "./vendor/pdf.mjs",
-  "./vendor/pdf.worker.mjs"
+  "./vendor/pdf.worker.mjs",
+  "./vendor/zip.min.mjs"
 ];
 
 self.addEventListener("install", event => {

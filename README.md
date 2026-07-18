@@ -6,11 +6,11 @@
 
 把 **思维导图、自由书写、富文本、PDF 阅读与压感批注** 放在同一张无限画布中。
 
-[在线体验](https://9leaa.github.io/infinite-mindmap/?v=18.3) ·
+[在线体验](https://9leaa.github.io/infinite-mindmap/?v=18.4) ·
 [问题反馈](https://github.com/9leaa/infinite-mindmap/issues) ·
 [测试报告](./TEST_REPORT.md)
 
-![Version](https://img.shields.io/badge/version-V18.3-2563eb)
+![Version](https://img.shields.io/badge/version-V18.4-2563eb)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20iPad%20%7C%20macOS-111827)
 ![Data](https://img.shields.io/badge/data-local--first-16a34a)
 ![Canvas](https://img.shields.io/badge/canvas-custom_engine-7c3aed)
@@ -93,7 +93,10 @@ Infinite Mindmap 是一款运行在浏览器中的无限画布笔记工具，面
 - 数据保存到浏览器 IndexedDB；
 - 手写和 PDF 批注逐条增量写入；
 - Dedicated Worker 负责高频存储任务；
-- 支持笔记库导入与导出；
+- 完整备份使用分文件 ZIP，不再把 PDF 转成 Base64 塞进巨大 JSON；
+- ZIP 内分别保存笔记结构、手写分块、PDF 批注和附件二进制；
+- 恢复时校验 ZIP Entry CRC 和附件大小；
+- 继续兼容旧版 `.json` 笔记与笔记库；
 - 支持离线使用和 PWA 安装；
 - 默认不需要账户、服务器或数据库。
 
@@ -195,7 +198,7 @@ tiltX / tiltY / altitudeAngle / azimuthAngle
 
 直接打开：
 
-**https://9leaa.github.io/infinite-mindmap/?v=18.3**
+**https://9leaa.github.io/infinite-mindmap/?v=18.4**
 
 首次访问后，静态资源会由 Service Worker 缓存，可以作为 PWA 使用。
 
@@ -278,6 +281,80 @@ Infinite Mindmap 是 **Local-first** 应用。
 - 在清理缓存、升级版本或更换设备前，请先执行完整备份。
 
 > 无痕模式、系统存储不足和浏览器自动清理可能影响数据持久性，不建议在无痕窗口中长期使用。
+
+---
+
+
+## 安全备份与恢复
+
+V18.4 将完整备份格式升级为：
+
+```text
+mindmap-library-YYYY-MM-DD.mindmap-backup.zip
+├── manifest.json
+├── library.json
+├── documents/
+├── ink/
+├── annotations/
+├── inline-images/
+└── assets/
+```
+
+### 为什么不再使用单个 JSON
+
+旧版会把所有 PDF、Office 文件和图片转换为 Base64，再对整个笔记库执行一次 `JSON.stringify()`。当附件较多时，会同时产生巨型字符串、Base64 膨胀和多份内存副本，最终可能报错：
+
+```text
+Invalid string length
+```
+
+新版不会把 PDF 与 Office 文件写入 JSON：
+
+```text
+PDF / Office Blob
+→ 直接作为 ZIP 二进制 Entry 写入
+```
+
+手写笔迹和 PDF 批注也会拆成多个大小受控的 JSON 分块，不再生成一个无限增长的字符串。
+
+### 完整备份
+
+点击：
+
+```text
+备份全部笔记
+```
+
+应用会显示当前进度，并依次写入：
+
+1. 笔记库索引；
+2. 每个笔记的节点和自由对象；
+3. 分块手写笔迹；
+4. PDF 批注；
+5. PDF、Office 文件和内嵌图片；
+6. ZIP 清单与完整性信息。
+
+在支持 File System Access API 的桌面浏览器中，ZIP 会直接流式写入用户选择的文件；其他浏览器会生成标准 ZIP 下载。
+
+### 恢复
+
+“打开单个笔记”和“导入完整笔记库”均支持：
+
+- `.mindmap.zip`
+- `.mindmap-backup.zip`
+- 普通 `.zip`
+- 旧版 `.mindmap.json`
+- 旧版 `.json`
+
+恢复 ZIP 时：
+
+- 二进制附件直接写回 IndexedDB；
+- 手写笔迹写回独立笔迹 Store；
+- PDF 批注写回独立批注 Store；
+- 资产 ID 和文档 ID 会重新映射，避免覆盖现有笔记；
+- 失败时回滚本次已经写入的文档、笔迹、批注和附件。
+
+> 无论任何版本，升级、清除浏览器数据或更换设备之前，都应先生成一个可以正常保存的完整备份。
 
 ---
 
@@ -404,15 +481,16 @@ window.__mindmapDiagnostics
 
 ## 版本说明
 
-当前版本：**V18.3**
+当前版本：**V18.4**
 
 本版本主要改进：
 
-- 富文本颜色与字号样式叠加；
-- Tab 四空格；
-- `T` 键按鼠标位置建立文字框；
-- 文字框与节点内容自动增高；
-- Mac 悬浮工具栏整条拖动。
+- 完整笔记库改为分文件 ZIP 备份；
+- PDF、Office 和图片保持二进制，不再 Base64 化；
+- 手写和 PDF 批注按受控大小分块；
+- ZIP 恢复写回 IndexedDB 独立 Store；
+- 备份进度、取消、CRC 校验和失败回滚；
+- 保留旧版 JSON 导入兼容。
 
 此前 V18 系列已经完成：
 
@@ -429,7 +507,7 @@ window.__mindmapDiagnostics
 
 ## 第三方组件
 
-项目使用 Mozilla PDF.js 进行 PDF 解析和页面渲染。
+项目使用 Mozilla PDF.js 进行 PDF 解析和页面渲染，并使用 zip.js 生成和读取流式 ZIP 备份。
 
 相关许可证及说明见：
 

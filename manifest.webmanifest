@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.3",
+  "name": "无限画布思维导图 V18.4",
   "short_name": "无限画布",
-  "description": "修复局部字体样式叠加、Tab四空格、T键鼠标定位、文字框自动增高和Mac整条悬浮工具栏拖动。",
-  "start_url": "./?v=18.3",
+  "description": "新增分文件 ZIP 安全备份与恢复，避免 PDF 和附件转 Base64 导致 Invalid string length。",
+  "start_url": "./?v=18.4",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",
