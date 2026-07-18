@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.2",
+  "name": "无限画布思维导图 V18.3",
   "short_name": "无限画布",
-  "description": "修复 iPad PDF 短笔迹、Pointer/Touch 混合采样、单点笔迹、页面渲染打断和页码提前跳转。",
-  "start_url": "./?v=18.2",
+  "description": "修复局部字体样式叠加、Tab四空格、T键鼠标定位、文字框自动增高和Mac整条悬浮工具栏拖动。",
+  "start_url": "./?v=18.3",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",

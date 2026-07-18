@@ -1,57 +1,13 @@
-# 无限画布思维导图 V18.2
+# 无限画布思维导图 V18.3
 
-V18.2 继续使用原项目的自研画布、节点系统和压感笔引擎，不包含 Excalidraw。
+V18.3 只修改五项文本编辑和悬浮工具栏体验。V18.2 的画布、Pencil、PDF、节点连接、分块渲染和增量存储逻辑保持不变。
 
-## 本次主要修复
+## 修复内容
 
-### PDF 偶发只写出一小段
+1. 局部文字先改颜色再改字号时，颜色不再丢失。
+2. 节点标题、节点内容和自由文字编辑时，Tab 插入四个空格。
+3. 快捷键 T 在鼠标最后所在的画布位置建立文字框；顶部文字按钮仍在视口中心建立。
+4. 自由文字只手动调整宽度，高度随内容自动变化；节点内容保持自然高度，不出现内部纵向滚动。
+5. Mac 上可以从两条悬浮工具栏的普通表面和按钮区域开始三指拖动，不必只对准六个点。滑块、颜色输入和下拉框仍保留自身操作。
 
-根因不是线宽或压感，而是输入采样链存在四个缺口：
-
-1. iPad WebKit 的 `getCoalescedEvents()` 有时存在但返回空数组，旧代码会把当前 `pointermove` 一并丢弃。
-2. `pointerup` 的最终坐标没有加入笔迹。
-3. `lostpointercapture` 会立即结束笔迹。
-4. Pointer Events 已经开始后，Touch Events 后备通道不会再接管同一支 Pencil。
-
-V18.2 改为：
-
-- 空 coalesced 数组自动回退到原始 PointerEvent
-- 保存 pointerup 最终坐标
-- window 级 pointermove/up/cancel 保护
-- lostpointercapture 不再直接截断
-- Pointer 与 stylus Touch Events 写入同一条笔迹
-- touchend 保存 changedTouches 最终坐标
-- 单点和极短笔画也会保存
-
-### PDF 页面升级不再打断书写
-
-当前页从预览升级为高清时，如果 Pencil 正在该页书写，升级任务会暂缓。抬笔后再替换页面和调整批注 Canvas，避免书写过程中 Canvas 被重设尺寸。
-
-### 页码判断
-
-页面状态改为选择当前视口中可见面积最大的页面，避免正文仍主要显示第6页时顶部提前显示 `7/12`。
-
-### 主画布同步修复
-
-主画布也使用了相同的 coalesced 采样方式。V18.2 同步增加空数组回退、pointerup 最终坐标和 lostpointercapture 保护。
-
-## 诊断
-
-控制台执行：
-
-```js
-window.__mindmapRuntimeStats()
-```
-
-新增字段：
-
-- `pdfPointerSamples`
-- `pdfTouchSamples`
-- `pdfHybridSessions`
-- `pdfDeferredRenders`
-
-## 部署地址
-
-```text
-https://9leaa.github.io/infinite-mindmap/?v=18.2
-```
+拖动超过 7px 才移动工具栏；普通单击不会受影响。

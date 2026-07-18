@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.2 Pencil 连续采样修复版</title>
+  <title>无限画布思维导图 · V18.3 文本编辑体验修复版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -4665,6 +4665,52 @@
       touch-action: pan-y pinch-zoom;
     }
 
+  
+    /* V18.3：文字对象只调整宽度，高度始终随内容增长 */
+    .free-item[data-type="text"] {
+      height: auto;
+      min-height: 44px;
+    }
+
+    .free-item[data-type="text"] .free-text,
+    .free-item[data-type="text"] .rich-editor {
+      height: auto !important;
+      min-height: 44px;
+      max-height: none !important;
+      overflow-x: visible !important;
+      overflow-y: visible !important;
+    }
+
+    .free-item[data-type="text"] .free-resize-handle {
+      cursor: ew-resize;
+    }
+
+    .node-content,
+    .node-content .rich-editor {
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    /* Mac 三指拖动在浏览器中表现为鼠标拖动。
+       工具栏表面超过阈值后进入移动，不影响普通单击按钮。 */
+    .mindmap-floating-toolbar,
+    .pure-emphasis-toolbar {
+      cursor: grab;
+    }
+
+    .mindmap-floating-toolbar.dragging,
+    .pure-emphasis-toolbar.dragging {
+      cursor: grabbing !important;
+    }
+
+    .mindmap-floating-toolbar button,
+    .pure-emphasis-toolbar button,
+    .pure-emphasis-toolbar input,
+    .pure-emphasis-toolbar select {
+      cursor: pointer;
+    }
+
   </style>
   <meta name="theme-color" content="#2563eb" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -5659,6 +5705,9 @@
       let panState = null;
       let contextNodeId = null;
       let currentTextEditor = null;
+      let lastWorkspacePointerPosition = null;
+      let toolbarSurfaceDragCandidate = null;
+      let toolbarSurfaceClickBlockUntil = 0;
       let savedRichRange = null;
       let richToolbarFrame = null;
       let pureToolbarDragState = null;
@@ -5727,11 +5776,11 @@
         );
       })();
       const PDFJS_MODULE_URL = new URL(
-        "./vendor/pdf.mjs?v=18.2",
+        "./vendor/pdf.mjs?v=18.3",
         document.baseURI
       ).href;
       const PDFJS_WORKER_URL = new URL(
-        "./vendor/pdf.worker.mjs?v=18.2",
+        "./vendor/pdf.worker.mjs?v=18.3",
         document.baseURI
       ).href;
       const PDFJS_CMAP_URL = new URL(
@@ -8876,8 +8925,13 @@
 
       function syncCurrentRichEditor() {
         if (!currentTextEditor) return;
-        currentTextEditor.liveHtml = sanitizeRichHtml(currentTextEditor.control.innerHTML);
-        currentTextEditor.liveText = richHtmlToPlainText(currentTextEditor.liveHtml);
+        currentTextEditor.liveHtml = sanitizeRichHtml(
+          currentTextEditor.control.innerHTML
+        );
+        currentTextEditor.liveText = richHtmlToPlainText(
+          currentTextEditor.liveHtml
+        );
+        syncCurrentTextEditorAutoHeight();
       }
 
       function applyRichCommand(command, value = null) {
@@ -8889,18 +8943,39 @@
         scheduleRichToolbarUpdate();
       }
 
-      function applyRichFontSize(size) {
+      function applyRichInlineStyle(property, value) {
         if (!restoreRichSelection()) return;
-        document.execCommand("fontSize", false, "7");
-        const control = currentTextEditor?.control;
-        control?.querySelectorAll('font[size="7"]').forEach(font => {
-          const span = document.createElement("span");
-          span.style.fontSize = size;
-          while (font.firstChild) span.appendChild(font.firstChild);
-          font.replaceWith(span);
-        });
+
+        const selection = window.getSelection();
+        if (
+          !selection ||
+          selection.rangeCount === 0 ||
+          selection.isCollapsed
+        ) {
+          return;
+        }
+
+        const range = selection.getRangeAt(0);
+        if (!richRangeInsideEditor(range)) return;
+
+        const wrapper = document.createElement("span");
+        wrapper.style.setProperty(property, value);
+        wrapper.appendChild(range.extractContents());
+        range.insertNode(wrapper);
+
+        const nextRange = document.createRange();
+        nextRange.selectNodeContents(wrapper);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        savedRichRange = nextRange.cloneRange();
+
+        currentTextEditor?.control?.normalize();
         syncCurrentRichEditor();
         scheduleRichToolbarUpdate();
+      }
+
+      function applyRichFontSize(size) {
+        applyRichInlineStyle("font-size", size);
       }
 
       function renderNodes() {
@@ -8987,6 +9062,74 @@
       function autoSizeTextarea(textarea) {
         textarea.style.height = "auto";
         textarea.style.height = `${Math.max(54, textarea.scrollHeight)}px`;
+      }
+
+      function syncFreeTextAutoHeight(item, element = null) {
+        if (!item || item.type !== "text") return;
+
+        const el = element || freeLayer.querySelector(
+          `.free-item[data-id="${CSS.escape(item.id)}"]`
+        );
+        const content = el?.querySelector(".free-text");
+        if (!el || !content) return;
+
+        el.style.height = "auto";
+        content.style.height = "auto";
+        content.style.overflowY = "visible";
+
+        const nextHeight = Math.max(
+          44,
+          Math.ceil(content.scrollHeight + 2)
+        );
+        item.height = nextHeight;
+        el.style.height = `${nextHeight}px`;
+      }
+
+      function syncCurrentTextEditorAutoHeight() {
+        const editor = currentTextEditor;
+        if (!editor) return;
+
+        const freeEl = editor.host.closest(
+          '.free-item[data-type="text"]'
+        );
+        if (freeEl) {
+          const item = getFreeItem(freeEl.dataset.id);
+          if (item) syncFreeTextAutoHeight(item, freeEl);
+        }
+
+        const nodeEl = editor.host.closest(".node");
+        if (nodeEl) {
+          nodeEl.style.height = "auto";
+          scheduleEdgeRender();
+        }
+      }
+
+      function insertTextAtRichCaret(text) {
+        const control = currentTextEditor?.control;
+        const selection = window.getSelection();
+        if (
+          !control ||
+          !selection ||
+          selection.rangeCount === 0
+        ) {
+          return false;
+        }
+
+        const range = selection.getRangeAt(0);
+        if (!richRangeInsideEditor(range)) return false;
+
+        range.deleteContents();
+        const textNode = document.createTextNode(text);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedRichRange = range.cloneRange();
+
+        syncCurrentRichEditor();
+        scheduleRichToolbarUpdate();
+        return true;
       }
 
       function closeCurrentTextEditor({ commit = true } = {}) {
@@ -9090,6 +9233,12 @@
 
         control.addEventListener("keydown", event => {
           event.stopPropagation();
+
+          if (event.key === "Tab") {
+            event.preventDefault();
+            insertTextAtRichCaret("    ");
+            return;
+          }
 
           if (event.key === "Escape") {
             event.preventDefault();
@@ -11540,6 +11689,7 @@
             setRichHostContent(content, item.html, item.text);
             content.style.color = item.color || defaultTextColor();
             content.style.fontSize = `${item.fontSize || 22}px`;
+            syncFreeTextAutoHeight(item, el);
           } else if (item.type === "image") {
             const image = el.querySelector("img");
             if (image.src !== item.image) image.src = item.image || "";
@@ -14741,17 +14891,24 @@
               item.type === "image" ? 100 : 80,
               Math.min(1200, resizeState.startWidth + dx)
             );
-            item.height = Math.max(
-              item.type === "image" ? 80 : 44,
-              Math.min(900, resizeState.startHeight + dy)
-            );
+
+            if (item.type !== "text") {
+              item.height = Math.max(
+                item.type === "image" ? 80 : 44,
+                Math.min(900, resizeState.startHeight + dy)
+              );
+            }
 
             const el = freeLayer.querySelector(
               `.free-item[data-id="${CSS.escape(item.id)}"]`
             );
             if (el) {
               el.style.width = `${item.width}px`;
-              el.style.height = `${item.height}px`;
+              if (item.type === "text") {
+                syncFreeTextAutoHeight(item, el);
+              } else {
+                el.style.height = `${item.height}px`;
+              }
             }
           } else {
             const node = getNode(resizeState.id);
@@ -15237,6 +15394,41 @@
       addNodeBtn.addEventListener("click", () => {
         addRootNodeAtViewportCenter();
       });
+
+      function createFreeTextAtShortcutPosition() {
+        const rect = workspace.getBoundingClientRect();
+        const clientX = lastWorkspacePointerPosition?.clientX ??
+          (rect.left + workspace.clientWidth / 2);
+        const clientY = lastWorkspacePointerPosition?.clientY ??
+          (rect.top + workspace.clientHeight / 2);
+        const point = screenToWorld(clientX, clientY);
+        const item = addFreeTextAt(point.x, point.y);
+        requestAnimationFrame(() => {
+          editFreeText(item.id, { selectAll: true });
+        });
+      }
+
+      workspace.addEventListener(
+        "pointermove",
+        event => {
+          lastWorkspacePointerPosition = {
+            clientX: event.clientX,
+            clientY: event.clientY
+          };
+        },
+        { capture: true, passive: true }
+      );
+
+      workspace.addEventListener(
+        "pointerdown",
+        event => {
+          lastWorkspacePointerPosition = {
+            clientX: event.clientX,
+            clientY: event.clientY
+          };
+        },
+        { capture: true, passive: true }
+      );
 
       addFreeTextBtn.addEventListener("click", () => {
         const rect = workspace.getBoundingClientRect();
@@ -16325,6 +16517,193 @@
       window.addEventListener("pointerup", finishTabletToolbarDrag);
       window.addEventListener("pointercancel", finishTabletToolbarDrag);
 
+      function beginWholeToolbarMouseDrag(toolbar, kind, event) {
+        if (
+          !appReady ||
+          event.pointerType !== "mouse" ||
+          event.button !== 0
+        ) {
+          return;
+        }
+
+        if (
+          event.target.closest(
+            "input, select, label, " +
+            ".mindmap-toolbar-drag, .pure-emphasis-drag, " +
+            ".pure-tool-settings-popover"
+          )
+        ) {
+          return;
+        }
+
+        const settings = kind === "pure"
+          ? ensurePureToolsSettings()
+          : ensureTabletMindmapToolbarSettings();
+
+        toolbarSurfaceDragCandidate = {
+          kind,
+          toolbar,
+          pointerId: event.pointerId,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startX: settings.x,
+          startY: settings.y,
+          started: false
+        };
+      }
+
+      function moveWholeToolbarMouseDrag(event) {
+        const candidate = toolbarSurfaceDragCandidate;
+        if (
+          !candidate ||
+          candidate.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        const distance = Math.hypot(
+          event.clientX - candidate.startClientX,
+          event.clientY - candidate.startClientY
+        );
+
+        if (!candidate.started) {
+          if (distance < 7) return;
+          candidate.started = true;
+          candidate.toolbar.classList.add("dragging");
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (candidate.kind === "pure") {
+          const settings = ensurePureToolsSettings();
+          const maxX = Math.max(
+            8,
+            window.innerWidth -
+              pureEmphasisToolbar.offsetWidth -
+              8
+          );
+          const maxY = Math.max(
+            8,
+            window.innerHeight -
+              pureEmphasisToolbar.offsetHeight -
+              pureToolbarBottomReserve()
+          );
+
+          settings.x = Math.max(
+            8,
+            Math.min(
+              maxX,
+              candidate.startX +
+                event.clientX -
+                candidate.startClientX
+            )
+          );
+          settings.y = Math.max(
+            8,
+            Math.min(
+              maxY,
+              candidate.startY +
+                event.clientY -
+                candidate.startClientY
+            )
+          );
+
+          pureEmphasisToolbar.style.left = `${settings.x}px`;
+          pureEmphasisToolbar.style.top = `${settings.y}px`;
+          positionPureFloatingPanels();
+          return;
+        }
+
+        const settings = ensureTabletMindmapToolbarSettings();
+        settings.x =
+          candidate.startX +
+          event.clientX -
+          candidate.startClientX;
+        settings.y =
+          candidate.startY +
+          event.clientY -
+          candidate.startClientY;
+
+        clampTabletToolbarPosition();
+        positionTabletMorePanel();
+      }
+
+      function finishWholeToolbarMouseDrag(event) {
+        const candidate = toolbarSurfaceDragCandidate;
+        if (
+          !candidate ||
+          candidate.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        if (candidate.started) {
+          event.preventDefault();
+          event.stopPropagation();
+          toolbarSurfaceClickBlockUntil = performance.now() + 500;
+          candidate.toolbar.classList.remove("dragging");
+          persistLibrary();
+          requestAnimationFrame(() => arrangeFloatingToolbars());
+        }
+
+        toolbarSurfaceDragCandidate = null;
+      }
+
+      function blockClickAfterWholeToolbarDrag(event) {
+        if (performance.now() >= toolbarSurfaceClickBlockUntil) {
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+
+      tabletActionDock.addEventListener(
+        "pointerdown",
+        event => beginWholeToolbarMouseDrag(
+          tabletActionDock,
+          "mindmap",
+          event
+        ),
+        true
+      );
+      pureEmphasisToolbar.addEventListener(
+        "pointerdown",
+        event => beginWholeToolbarMouseDrag(
+          pureEmphasisToolbar,
+          "pure",
+          event
+        ),
+        true
+      );
+
+      tabletActionDock.addEventListener(
+        "click",
+        blockClickAfterWholeToolbarDrag,
+        true
+      );
+      pureEmphasisToolbar.addEventListener(
+        "click",
+        blockClickAfterWholeToolbarDrag,
+        true
+      );
+
+      window.addEventListener(
+        "pointermove",
+        moveWholeToolbarMouseDrag,
+        { capture: true, passive: false }
+      );
+      window.addEventListener(
+        "pointerup",
+        finishWholeToolbarMouseDrag,
+        true
+      );
+      window.addEventListener(
+        "pointercancel",
+        finishWholeToolbarMouseDrag,
+        true
+      );
+
       tabletDockCollapseBtn.addEventListener("click", event => {
         event.stopPropagation();
         const settings = ensureTabletMindmapToolbarSettings();
@@ -16648,7 +17027,7 @@
 
           if (key === "t") {
             event.preventDefault();
-            addFreeTextBtn.click();
+            createFreeTextAtShortcutPosition();
           }
 
           if (key === "i") {
