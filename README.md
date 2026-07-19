@@ -10,7 +10,7 @@
 [问题反馈](https://github.com/9leaa/infinite-mindmap/issues) ·
 [测试报告](./TEST_REPORT.md)
 
-![Version](https://img.shields.io/badge/version-V18.4.1-2563eb)
+![Version](https://img.shields.io/badge/version-V18.4.2-2563eb)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20iPad%20%7C%20macOS-111827)
 ![Data](https://img.shields.io/badge/data-local--first-16a34a)
 ![Canvas](https://img.shields.io/badge/canvas-custom_engine-7c3aed)
@@ -287,7 +287,7 @@ Infinite Mindmap 是 **Local-first** 应用。
 
 ## 安全备份与恢复
 
-V18.4.1 将完整备份格式升级为：
+V18.4.2 将完整备份格式升级为：
 
 ```text
 mindmap-library-YYYY-MM-DD.mindmap-backup.zip
@@ -481,7 +481,7 @@ window.__mindmapDiagnostics
 
 ## 版本说明
 
-当前版本：**V18.4.1**
+当前版本：**V18.4.2**
 
 本版本主要改进：
 
@@ -544,12 +544,12 @@ window.__mindmapDiagnostics
 </div>
 
 
-## V18.4.1 热修复
+## V18.4.2 热修复
 
 Chrome 的 File System Access API 要求 `accept` 中填写真实的单一扩展名，例如 `.zip`。  
 `.mindmap-backup.zip`、`.mindmap.zip` 和 `.mindmap.json` 是文件名后缀，不是合法的扩展名过滤条件。
 
-V18.4.1 仅将文件选择器过滤条件改为：
+V18.4.2 仅将文件选择器过滤条件改为：
 
 ```text
 ZIP  → .zip
@@ -564,3 +564,19 @@ mindmap-library-YYYY-MM-DD.mindmap-backup.zip
 ```
 
 ZIP 内容、备份结构、恢复流程和旧 JSON 兼容性均未改变。
+
+## V18.4.2 附件生命周期
+
+删除 PDF、Office 文件卡片或 PDF 页面后，备份只根据画布中仍然存在的 `assetId` 引用收集附件，不再根据 `state.assets` 中的历史元数据无条件打包。
+
+清理流程：
+
+```text
+删除画布文件对象
+→ 立即从备份引用集合移除
+→ 在空闲时间检查是否仍被其他卡片或笔记引用
+→ 清除孤立资产元数据和当前笔记的 PDF 批注
+→ 无全局引用且不在撤销历史中时删除二进制 Blob
+```
+
+为保留撤销功能，刚删除的文件在当前撤销历史仍能恢复时，二进制可能暂时保留；它不会进入备份。撤销历史失效或应用重新打开后，启动清理会释放孤立文件。

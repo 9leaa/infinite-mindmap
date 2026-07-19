@@ -1,58 +1,67 @@
-# V18.4.1 文件选择器错误修复报告
-
-## 现象
-
-```text
-Failed to execute 'showSaveFilePicker' on 'Window':
-Extension '.mindmap-backup.zip' contains invalid characters.
-```
+# V18.4.2 删除附件与备份筛选修复报告
 
 ## 根因
 
-File System Access API 的 `types[].accept` 字段接收的是扩展名过滤条件，而不是完整文件名后缀。
+旧版删除操作只从 `state.freeItems` 移除画布卡片。附件元数据仍保留在 `state.assets`，二进制仍保留在 IndexedDB，ZIP 备份又直接遍历 `state.assets`，所以已经从画布删除的文件仍会被备份。
 
-错误配置：
+旧垃圾回收也把 `state.assets` 中的每个键都当作有效引用，无法识别孤立元数据。
 
-```js
-"application/zip": [
-  ".mindmap.zip",
-  ".mindmap-backup.zip",
-  ".zip"
-]
+## 修复
+
+### 真实引用来源
+
+附件是否有效现在由画布对象判断：
+
+```text
+freeItems[].assetId
 ```
 
-正确配置：
+包括 PDF 文件卡片、PDF 页面和 Office 附件。只有至少一个仍存在的画布对象引用该 `assetId`，它才是活跃附件。
 
-```js
-"application/zip": [".zip"]
-```
+### 删除流程
 
-同理，JSON 打开过滤条件应使用 `.json`，而不是 `.mindmap.json`。
+删除选中自由对象时会记录其 `assetId`，并安排空闲清理：
 
-## 修复范围
+- 当前笔记不再引用：删除该笔记的资产元数据和 PDF 批注；
+- 所有笔记均不引用：删除 IndexedDB 二进制；
+- 当前撤销历史仍引用：暂时保留二进制以支持撤销；
+- 撤销历史失效或重新打开应用：自动释放孤立文件。
 
-只修改：
+### 备份保护
 
-- ZIP 保存文件选择器；
-- ZIP/JSON 打开文件选择器；
-- HTML 文件输入过滤条件；
-- 版本号和 Service Worker 缓存名。
+以下两条导出链路均只包含活跃引用：
 
-未修改：
+- V18.4 ZIP 完整备份和单笔记备份；
+- 旧 JSON 导出兼容路径。
 
-- ZIP 备份内容；
-- ZIP 恢复；
-- PDF、画布和 Pencil；
-- 节点和富文本；
-- IndexedDB 和 Storage Worker。
+Manifest 中的附件数量也按活跃引用计算。
+
+### 旧数据清理
+
+应用启动后会在空闲时间扫描旧版本遗留的孤立资产，清除：
+
+- 无引用资产元数据；
+- 无引用 PDF 批注；
+- 无引用二进制 Blob；
+- PDF 文档缓存。
+
+## 未修改
+
+- Canvas Tile 与 Pencil；
+- PDF 页面渲染和书写；
+- 节点与富文本；
+- ZIP 格式及恢复协议；
+- Storage Worker 和 IndexedDB 数据库版本。
 
 ## 自动检查
 
-- 主应用 JavaScript 语法通过；
-- Storage Worker JavaScript 语法通过；
-- HTML 重复 ID：0；
-- DOM 缺失引用：0；
-- 保存选择器只使用 `.zip`；
-- 打开选择器只使用 `.zip` 和 `.json`；
-- `.mindmap-backup.zip` 和 `.mindmap.zip` 建议文件名保留；
-- V18.4 ZIP 导出与恢复关键代码保留。
+- 主应用 JavaScript 语法；
+- Storage Worker 和 zip.js 语法；
+- 重复 HTML ID：0；
+- 缺失 DOM 引用：0；
+- V18.1–V18.4.1 回归；
+- 资产引用模型；
+- 删除附件备份排除；
+- 撤销窗口保护；
+- 启动孤立文件扫描；
+- ZIP 和旧 JSON 导出筛选。

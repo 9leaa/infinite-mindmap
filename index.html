@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.4.1 文件选择器热修复版</title>
+  <title>无限画布思维导图 · V18.4.2 附件生命周期修复版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -5920,7 +5920,7 @@
         document.baseURI
       ).href;
       const ZIP_MODULE_URL = new URL(
-        "./vendor/zip.min.mjs?v=18.4.1",
+        "./vendor/zip.min.mjs?v=18.4.2",
         document.baseURI
       ).href;
       let zipModulePromise = null;
@@ -6308,6 +6308,15 @@
           totalBytes -= history.redo[0].length;
           history.redo.shift();
         }
+
+        scheduleIdleTask(() => {
+          garbageCollectBinaryAssets({
+            respectHistory: true,
+            persist: true
+          }).catch(error => {
+            console.warn("历史裁剪后的附件清理失败", error);
+          });
+        });
       }
 
       function commitHistory() {
@@ -6718,17 +6727,102 @@
         });
       }
 
-      async function garbageCollectBinaryAssets() {
+      function referencedAssetIdsFromState(sourceState) {
         const referenced = new Set();
 
-        for (const doc of Object.values(library.documents || {})) {
-          for (const assetId of Object.keys(doc.state?.assets || {})) {
-            referenced.add(assetId);
+        for (const item of sourceState?.freeItems || []) {
+          if (
+            typeof item?.assetId === "string" &&
+            item.assetId
+          ) {
+            referenced.add(item.assetId);
           }
         }
 
+        return referenced;
+      }
+
+      function documentStateForAssetReferences(documentId) {
+        if (documentId === library.currentDocumentId) {
+          return state;
+        }
+        return library.documents?.[documentId]?.state || null;
+      }
+
+      function collectLiveAssetReferences() {
+        const references = new Map();
+
+        for (const [documentId, doc] of Object.entries(
+          library.documents || {}
+        )) {
+          const sourceState =
+            documentStateForAssetReferences(documentId) ||
+            doc.state ||
+            {};
+          for (const assetId of referencedAssetIdsFromState(
+            sourceState
+          )) {
+            if (!references.has(assetId)) {
+              references.set(assetId, new Set());
+            }
+            references.get(assetId).add(documentId);
+          }
+        }
+
+        return references;
+      }
+
+      function historySnapshotContainsAsset(
+        snapshot,
+        assetId
+      ) {
+        if (
+          typeof snapshot !== "string" ||
+          !snapshot ||
+          !assetId
+        ) {
+          return false;
+        }
+
+        const marker = `"assetId":"${assetId}"`;
+        return snapshot.includes(marker);
+      }
+
+      function documentHistoryContainsAsset(
+        documentId,
+        assetId
+      ) {
+        const history = historyByDocument.get(documentId);
+        if (!history) return false;
+
+        return [
+          history.current,
+          ...(history.undo || []),
+          ...(history.redo || [])
+        ].some(snapshot =>
+          historySnapshotContainsAsset(snapshot, assetId)
+        );
+      }
+
+      function assetProtectedByUndoHistory(assetId) {
+        for (const documentId of Object.keys(
+          library.documents || {}
+        )) {
+          if (
+            documentHistoryContainsAsset(
+              documentId,
+              assetId
+            )
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      async function listBinaryAssetKeys() {
         const db = await openLibraryDatabase();
-        const keys = await new Promise((resolve, reject) => {
+        return new Promise((resolve, reject) => {
           const transaction = db.transaction(
             BINARY_ASSET_STORE_NAME,
             "readonly"
@@ -6737,15 +6831,176 @@
             .objectStore(BINARY_ASSET_STORE_NAME)
             .getAllKeys();
 
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => reject(request.error);
+          request.onsuccess = () =>
+            resolve(request.result || []);
+          request.onerror = () =>
+            reject(
+              request.error ||
+              new Error("读取附件索引失败")
+            );
         });
+      }
 
-        for (const key of keys) {
-          if (!referenced.has(key)) {
-            await deleteBinaryAsset(key);
+      async function garbageCollectBinaryAssets({
+        candidates = null,
+        respectHistory = true,
+        persist = true
+      } = {}) {
+        const liveReferences = collectLiveAssetReferences();
+        const candidateIds = new Set(
+          Array.isArray(candidates)
+            ? candidates.filter(Boolean)
+            : []
+        );
+
+        if (!candidateIds.size) {
+          for (const doc of Object.values(
+            library.documents || {}
+          )) {
+            for (const assetId of Object.keys(
+              doc.state?.assets || {}
+            )) {
+              candidateIds.add(assetId);
+            }
+          }
+
+          for (const assetId of await listBinaryAssetKeys()) {
+            candidateIds.add(String(assetId));
           }
         }
+
+        let metadataChanged = false;
+        let removedMetadata = 0;
+        let removedBinary = 0;
+        let removedAnnotationGroups = 0;
+
+        for (const assetId of candidateIds) {
+          const liveDocumentIds =
+            liveReferences.get(assetId) || new Set();
+
+          for (const [documentId, doc] of Object.entries(
+            library.documents || {}
+          )) {
+            const hasMetadata = Boolean(
+              doc.state?.assets?.[assetId]
+            );
+            if (
+              !hasMetadata ||
+              liveDocumentIds.has(documentId)
+            ) {
+              continue;
+            }
+
+            if (
+              respectHistory &&
+              documentHistoryContainsAsset(
+                documentId,
+                assetId
+              )
+            ) {
+              continue;
+            }
+
+            if (
+              documentId === library.currentDocumentId &&
+              state.assets?.[assetId]
+            ) {
+              delete state.assets[assetId];
+            }
+
+            delete doc.state.assets[assetId];
+            metadataChanged = true;
+            removedMetadata += 1;
+
+            try {
+              await replacePdfAnnotations(
+                documentId,
+                assetId,
+                {}
+              );
+              removedAnnotationGroups += 1;
+            } catch (error) {
+              console.warn(
+                "清理孤立 PDF 批注失败",
+                documentId,
+                assetId,
+                error
+              );
+            }
+
+            hydratedPdfAnnotationAssets.delete(
+              `${documentId}:${assetId}`
+            );
+          }
+
+          if (liveDocumentIds.size) continue;
+          if (
+            respectHistory &&
+            assetProtectedByUndoHistory(assetId)
+          ) {
+            continue;
+          }
+
+          if (activePdfAssetId === assetId) {
+            closePdfReader();
+          }
+
+          pdfDocumentCache.delete(assetId);
+
+          try {
+            await deleteBinaryAsset(assetId);
+            removedBinary += 1;
+          } catch (error) {
+            console.warn(
+              "删除孤立附件二进制失败",
+              assetId,
+              error
+            );
+          }
+        }
+
+        if (metadataChanged) {
+          const current = currentDocument();
+          if (current) {
+            current.state = serializeCurrentState();
+            current.updatedAt = nowIso();
+          }
+
+          if (persist) {
+            persistLibrary({ immediate: true });
+          }
+        }
+
+        if (
+          removedMetadata ||
+          removedBinary ||
+          removedAnnotationGroups
+        ) {
+          refreshBrowserStorageStatus({ force: true });
+        }
+
+        return {
+          removedMetadata,
+          removedBinary,
+          removedAnnotationGroups
+        };
+      }
+
+      function scheduleDeletedAssetCleanup(assetIds) {
+        const candidates = [
+          ...new Set((assetIds || []).filter(Boolean))
+        ];
+        if (!candidates.length) return;
+
+        scheduleIdleTask(() => {
+          garbageCollectBinaryAssets({
+            candidates,
+            respectHistory: true,
+            persist: true
+          }).catch(error => {
+            console.warn("清理已删除附件失败", error);
+          });
+        });
       }
 
       async function dataUrlToBlobAsync(dataUrl) {
@@ -6872,6 +7127,14 @@
           }
 
           const assets = doc.state?.assets || {};
+          const referencedAssetIds =
+            referencedAssetIdsFromState(doc.state);
+
+          for (const assetId of Object.keys(assets)) {
+            if (!referencedAssetIds.has(assetId)) {
+              delete assets[assetId];
+            }
+          }
 
           for (const [assetId, asset] of Object.entries(assets)) {
             if (asset?.type === "pdf") {
@@ -8091,7 +8354,12 @@
         return paths;
       }
 
-      function createBackupDocumentSnapshot(sourceDoc) {
+      function createBackupDocumentSnapshot(
+        sourceDoc,
+        referencedAssetIds = referencedAssetIdsFromState(
+          sourceDoc?.state
+        )
+      ) {
         const sourceState = sourceDoc?.state || {};
         const {
           state: ignoredState,
@@ -8110,12 +8378,15 @@
         for (const [assetId, asset] of Object.entries(
           sourceState.assets || {}
         )) {
+          if (!referencedAssetIds.has(assetId)) continue;
+
           const {
             dataUrl,
             pdfAnnotations,
             ...metadata
           } = asset || {};
-          snapshot.state.assets[assetId] = backupClone(metadata);
+          snapshot.state.assets[assetId] =
+            backupClone(metadata);
         }
 
         return snapshot;
@@ -8255,8 +8526,17 @@
         updateCurrentDocument();
 
         const sourceEntries = documentIds
-          .map(id => [id, library.documents?.[id]])
-          .filter(([, doc]) => Boolean(doc));
+          .map(id => {
+            const doc = library.documents?.[id];
+            if (!doc) return null;
+            return {
+              documentId: id,
+              sourceDoc: doc,
+              referencedAssetIds:
+                referencedAssetIdsFromState(doc.state)
+            };
+          })
+          .filter(Boolean);
 
         if (!sourceEntries.length) {
           hideBackupProgress();
@@ -8264,8 +8544,8 @@
         }
 
         const totalAssets = sourceEntries.reduce(
-          (sum, [, doc]) =>
-            sum + Object.keys(doc.state?.assets || {}).length,
+          (sum, entry) =>
+            sum + entry.referencedAssetIds.size,
           0
         );
         const totalUnits = Math.max(
@@ -8303,7 +8583,7 @@
               ? "infinite-mindmap-library-backup"
               : "infinite-mindmap-document-backup",
           formatVersion: 1,
-          appVersion: "18.4",
+          appVersion: "18.4.2",
           exportedAt: nowIso(),
           libraryPath: "library.json",
           documents: [],
@@ -8324,7 +8604,7 @@
             currentDocumentId:
               kind === "library"
                 ? library.currentDocumentId
-                : sourceEntries[0][0],
+                : sourceEntries[0].documentId,
             settings:
               kind === "library"
                 ? backupClone(library.settings || {})
@@ -8345,14 +8625,20 @@
             documentIndex += 1
           ) {
             throwIfBackupAborted(signal);
-            const [documentId, sourceDoc] =
-              sourceEntries[documentIndex];
+            const {
+              documentId,
+              sourceDoc,
+              referencedAssetIds
+            } = sourceEntries[documentIndex];
             const documentKey = sanitizeZipSegment(
               documentId,
               `document-${documentIndex + 1}`
             );
             const documentSnapshot =
-              createBackupDocumentSnapshot(sourceDoc);
+              createBackupDocumentSnapshot(
+                sourceDoc,
+                referencedAssetIds
+              );
 
             updateBackupProgress(
               `正在处理笔记：${sourceDoc.title || "未命名笔记"}`,
@@ -8408,6 +8694,10 @@
             for (const [assetId, sourceAsset] of Object.entries(
               sourceDoc.state?.assets || {}
             )) {
+              if (!referencedAssetIds.has(assetId)) {
+                continue;
+              }
+
               throwIfBackupAborted(signal);
               const assetKey = sanitizeZipSegment(assetId, "asset");
               const assetInfo = {
@@ -15426,6 +15716,7 @@
       function deleteSelection({ subtree = false } = {}) {
         const freeIdsToDelete = new Set(selectedFreeIds);
         const nodeIdsToDelete = new Set(selectedNodeIds);
+        const deletedAssetIds = new Set();
 
         if (!nodeIdsToDelete.size && state.selectedId) {
           nodeIdsToDelete.add(state.selectedId);
@@ -15464,6 +15755,15 @@
         }
 
         if (freeIdsToDelete.size) {
+          for (const item of state.freeItems || []) {
+            if (
+              freeIdsToDelete.has(item.id) &&
+              item.assetId
+            ) {
+              deletedAssetIds.add(item.assetId);
+            }
+          }
+
           state.freeItems = (state.freeItems || []).filter(
             item => !freeIdsToDelete.has(item.id)
           );
@@ -15475,6 +15775,7 @@
         autosave();
         renderNodes();
         renderFreeItems();
+        scheduleDeletedAssetCleanup([...deletedAssetIds]);
         statusEl.textContent = totalDeleted
           ? `已删除 ${totalDeleted} 个选中对象`
           : "没有选中可删除的对象";
@@ -19144,6 +19445,15 @@
 
       requestPersistentBrowserStorage().finally(() => {
         refreshBrowserStorageStatus({ force: true });
+      });
+
+      scheduleIdleTask(() => {
+        garbageCollectBinaryAssets({
+          respectHistory: true,
+          persist: true
+        }).catch(error => {
+          console.warn("启动时清理孤立附件失败", error);
+        });
       });
 
       // V18：禁止编辑期间自动迁移旧数据。旧数据只在打开对应文档或附件时按需迁移。
