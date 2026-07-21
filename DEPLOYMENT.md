@@ -1,30 +1,25 @@
-# V18.4.2 附件生命周期修复部署
+# V18.4.3 富文本字号稳定修复部署
 
-## 更新前
+本版本只修改富文本字号选区和字号工具条状态，不修改画布、PDF、备份或附件生命周期。
 
-不要清除浏览器网站数据。部署后，旧版本遗留的孤立附件会在页面空闲时自动清理。
-
-## 部署
-
-解压完整部署包并覆盖仓库根目录：
+完整覆盖仓库后执行：
 
 ```bash
 git add -A
-git commit -m "V18.4.2 fix deleted asset lifecycle and backup filtering"
+git commit -m "V18.4.3 fix rich text font size selection and defaults"
 git push origin main
 ```
 
 等待 GitHub Actions 完成，完全关闭旧标签页，再访问：
 
 ```text
-https://9leaa.github.io/infinite-mindmap/?v=18.4.2
+https://9leaa.github.io/infinite-mindmap/?v=18.4.3
 ```
 
 ## 验证
 
-1. 导入一个测试 PDF。
-2. 生成一次备份，确认 ZIP 中包含该 PDF。
-3. 删除画布中的全部该 PDF 卡片和页面。
-4. 再生成备份，确认 ZIP 中不再包含该 PDF。
-5. 刷新或重新打开应用，让启动清理释放旧二进制。
-6. 不要在确认新备份可恢复前清除原网站数据。
+1. 新建自由文字，确认字号工具条显示 `22`。
+2. 打开节点正文，确认默认显示 `16`。
+3. 选中多行或整段文字，打开字号下拉框并选择新字号。
+4. 确认全部选中文字都生效。
+5. 再新建一个自由文字，确认没有显示上次选择的字号。

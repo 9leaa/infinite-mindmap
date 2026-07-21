@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.4.2 附件生命周期修复版</title>
+  <title>无限画布思维导图 · V18.4.3 富文本字号稳定版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -5264,6 +5264,7 @@
       <option value="Courier New">等宽字体</option>
     </select>
     <select id="richFontSize" title="字号">
+      <option value="" disabled>混合字号</option>
       <option value="12px">12</option>
       <option value="14px">14</option>
       <option value="16px" selected>16</option>
@@ -5833,6 +5834,7 @@
       let panState = null;
       let contextNodeId = null;
       let currentTextEditor = null;
+      let richToolbarPointerActive = false;
       let lastWorkspacePointerPosition = null;
       let toolbarSurfaceDragCandidate = null;
       let toolbarSurfaceClickBlockUntil = 0;
@@ -5920,7 +5922,7 @@
         document.baseURI
       ).href;
       const ZIP_MODULE_URL = new URL(
-        "./vendor/zip.min.mjs?v=18.4.2",
+        "./vendor/zip.min.mjs?v=18.4.3",
         document.baseURI
       ).href;
       let zipModulePromise = null;
@@ -10415,10 +10417,21 @@
         if (host.innerHTML !== safeHtml) host.innerHTML = safeHtml;
       }
 
-      function hideRichSelectionToolbar() {
-        savedRichRange = null;
+      function hideRichSelectionToolbar({
+        clearSavedRange = true
+      } = {}) {
+        if (clearSavedRange) {
+          savedRichRange = null;
+        }
         richSelectionToolbar.classList.remove("visible");
         richSelectionToolbar.setAttribute("aria-hidden", "true");
+      }
+
+      function richToolbarOwnsInteraction() {
+        return Boolean(
+          richToolbarPointerActive ||
+          richSelectionToolbar.contains(document.activeElement)
+        );
       }
 
       function richRangeInsideEditor(range) {
@@ -10426,50 +10439,165 @@
         if (!control || !range) return false;
         const ancestor = range.commonAncestorContainer;
         return control === ancestor || control.contains(
-          ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentNode
+          ancestor.nodeType === Node.ELEMENT_NODE
+            ? ancestor
+            : ancestor.parentNode
         );
+      }
+
+      function fontSizeOptionValue(value) {
+        const pixels = Math.round(Number.parseFloat(value));
+        if (!Number.isFinite(pixels)) return "";
+
+        const option = [...richFontSize.options].find(candidate => {
+          if (!candidate.value) return false;
+          return Math.round(
+            Number.parseFloat(candidate.value)
+          ) === pixels;
+        });
+
+        return option?.value || "";
+      }
+
+      function setRichFontSizeControl(value) {
+        richFontSize.value = fontSizeOptionValue(value);
+      }
+
+      function selectedTextNodesForRange(range) {
+        const control = currentTextEditor?.control;
+        if (!control || !range) return [];
+
+        const walker = document.createTreeWalker(
+          control,
+          NodeFilter.SHOW_TEXT
+        );
+        const nodes = [];
+
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          if (!node.nodeValue) continue;
+
+          try {
+            if (range.intersectsNode(node)) {
+              nodes.push(node);
+            }
+          } catch {
+            // Detached/transient selection nodes are ignored.
+          }
+        }
+
+        return nodes;
+      }
+
+      function syncRichFontSizeControlFromRange(range) {
+        const control = currentTextEditor?.control;
+        if (!control || !range) return;
+
+        const textNodes = selectedTextNodesForRange(range);
+        const sizes = new Set();
+
+        for (const textNode of textNodes) {
+          const element =
+            textNode.parentElement ||
+            (textNode.parentNode?.nodeType === Node.ELEMENT_NODE
+              ? textNode.parentNode
+              : control);
+          const value = getComputedStyle(element).fontSize;
+          const normalized = fontSizeOptionValue(value);
+          if (normalized) sizes.add(normalized);
+          else sizes.add("");
+          if (sizes.size > 1) break;
+        }
+
+        if (!textNodes.length) {
+          setRichFontSizeControl(
+            getComputedStyle(control).fontSize
+          );
+          return;
+        }
+
+        richFontSize.value =
+          sizes.size === 1
+            ? [...sizes][0]
+            : "";
       }
 
       function scheduleRichToolbarUpdate() {
         cancelAnimationFrame(richToolbarFrame);
-        richToolbarFrame = requestAnimationFrame(updateRichSelectionToolbar);
+        richToolbarFrame = requestAnimationFrame(
+          updateRichSelectionToolbar
+        );
       }
 
       function updateRichSelectionToolbar() {
         const selection = window.getSelection();
-        if (!currentTextEditor || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        const selectionUnavailable = Boolean(
+          !currentTextEditor ||
+          !selection ||
+          selection.rangeCount === 0 ||
+          selection.isCollapsed
+        );
+
+        if (selectionUnavailable) {
+          if (
+            currentTextEditor &&
+            savedRichRange &&
+            richToolbarOwnsInteraction()
+          ) {
+            return;
+          }
           hideRichSelectionToolbar();
           return;
         }
 
         const range = selection.getRangeAt(0);
         if (!richRangeInsideEditor(range)) {
+          if (
+            savedRichRange &&
+            richToolbarOwnsInteraction()
+          ) {
+            return;
+          }
           hideRichSelectionToolbar();
           return;
         }
 
         savedRichRange = range.cloneRange();
+        syncRichFontSizeControlFromRange(range);
+
         const rect = range.getBoundingClientRect();
         if (!rect.width && !rect.height) {
-          hideRichSelectionToolbar();
+          if (!richToolbarOwnsInteraction()) {
+            hideRichSelectionToolbar();
+          }
           return;
         }
 
         richSelectionToolbar.classList.add("visible");
-        richSelectionToolbar.setAttribute("aria-hidden", "false");
+        richSelectionToolbar.setAttribute(
+          "aria-hidden",
+          "false"
+        );
 
-        const toolbarRect = richSelectionToolbar.getBoundingClientRect();
+        const toolbarRect =
+          richSelectionToolbar.getBoundingClientRect();
         const left = Math.max(
           8,
           Math.min(
             window.innerWidth - toolbarRect.width - 8,
-            rect.left + rect.width / 2 - toolbarRect.width / 2
+            rect.left +
+              rect.width / 2 -
+              toolbarRect.width / 2
           )
         );
-        const preferredTop = rect.top - toolbarRect.height - 9;
+        const preferredTop =
+          rect.top - toolbarRect.height - 9;
         const top = preferredTop >= 8
           ? preferredTop
-          : Math.min(window.innerHeight - toolbarRect.height - 8, rect.bottom + 9);
+          : Math.min(
+              window.innerHeight - toolbarRect.height - 8,
+              rect.bottom + 9
+            );
 
         richSelectionToolbar.style.left = `${left}px`;
         richSelectionToolbar.style.top = `${top}px`;
@@ -10478,10 +10606,18 @@
       function restoreRichSelection() {
         const control = currentTextEditor?.control;
         if (!control || !savedRichRange) return false;
+
         control.focus({ preventScroll: true });
         const selection = window.getSelection();
         selection.removeAllRanges();
-        selection.addRange(savedRichRange);
+
+        try {
+          selection.addRange(savedRichRange);
+        } catch {
+          savedRichRange = null;
+          return false;
+        }
+
         return true;
       }
 
@@ -10501,12 +10637,43 @@
         document.execCommand(command, false, value);
         syncCurrentRichEditor();
         const selection = window.getSelection();
-        if (selection?.rangeCount) savedRichRange = selection.getRangeAt(0).cloneRange();
+        if (selection?.rangeCount) {
+          savedRichRange =
+            selection.getRangeAt(0).cloneRange();
+        }
         scheduleRichToolbarUpdate();
       }
 
+      function styleExtractedRichText(
+        fragment,
+        property,
+        value
+      ) {
+        const walker = document.createTreeWalker(
+          fragment,
+          NodeFilter.SHOW_TEXT
+        );
+        const textNodes = [];
+
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          if (node.nodeValue?.length) {
+            textNodes.push(node);
+          }
+        }
+
+        for (const textNode of textNodes) {
+          const wrapper = document.createElement("span");
+          wrapper.style.setProperty(property, value);
+          textNode.parentNode.insertBefore(wrapper, textNode);
+          wrapper.appendChild(textNode);
+        }
+
+        return textNodes.length;
+      }
+
       function applyRichInlineStyle(property, value) {
-        if (!restoreRichSelection()) return;
+        if (!value || !restoreRichSelection()) return;
 
         const selection = window.getSelection();
         if (
@@ -10520,19 +10687,34 @@
         const range = selection.getRangeAt(0);
         if (!richRangeInsideEditor(range)) return;
 
-        const wrapper = document.createElement("span");
-        wrapper.style.setProperty(property, value);
-        wrapper.appendChild(range.extractContents());
-        range.insertNode(wrapper);
+        const fragment = range.extractContents();
+        if (!fragment.hasChildNodes()) return;
+
+        const insertedNodes = [...fragment.childNodes];
+        const styledTextCount = styleExtractedRichText(
+          fragment,
+          property,
+          value
+        );
+
+        if (!styledTextCount) {
+          range.insertNode(fragment);
+          return;
+        }
+
+        range.insertNode(fragment);
 
         const nextRange = document.createRange();
-        nextRange.selectNodeContents(wrapper);
+        nextRange.setStartBefore(insertedNodes[0]);
+        nextRange.setEndAfter(
+          insertedNodes[insertedNodes.length - 1]
+        );
         selection.removeAllRanges();
         selection.addRange(nextRange);
         savedRichRange = nextRange.cloneRange();
 
-        currentTextEditor?.control?.normalize();
         syncCurrentRichEditor();
+        setRichFontSizeControl(value);
         scheduleRichToolbarUpdate();
       }
 
@@ -10775,7 +10957,14 @@
           liveText: value || ""
         };
 
-        control.addEventListener("pointerdown", event => event.stopPropagation());
+        setRichFontSizeControl(
+          getComputedStyle(control).fontSize
+        );
+
+        control.addEventListener(
+          "pointerdown",
+          event => event.stopPropagation()
+        );
         control.addEventListener("click", event => event.stopPropagation());
         control.addEventListener("dblclick", event => event.stopPropagation());
         control.addEventListener("input", () => {
@@ -10836,6 +11025,9 @@
           range.collapse(!selectAll);
           selection.removeAllRanges();
           selection.addRange(range);
+          savedRichRange = range.cloneRange();
+          syncRichFontSizeControlFromRange(range);
+          scheduleRichToolbarUpdate();
         });
       }
 
@@ -17338,10 +17530,34 @@
         renderNodes();
       });
 
-      richSelectionToolbar.addEventListener("pointerdown", event => {
-        event.stopPropagation();
-        if (event.target.closest("button")) event.preventDefault();
-      });
+      richSelectionToolbar.addEventListener(
+        "pointerdown",
+        event => {
+          richToolbarPointerActive = true;
+          event.stopPropagation();
+          if (event.target.closest("button")) {
+            event.preventDefault();
+          }
+        }
+      );
+
+      const finishRichToolbarPointerInteraction = () => {
+        setTimeout(() => {
+          richToolbarPointerActive = false;
+          scheduleRichToolbarUpdate();
+        }, 0);
+      };
+
+      window.addEventListener(
+        "pointerup",
+        finishRichToolbarPointerInteraction,
+        true
+      );
+      window.addEventListener(
+        "pointercancel",
+        finishRichToolbarPointerInteraction,
+        true
+      );
 
       document.addEventListener("selectionchange", scheduleRichToolbarUpdate);
       window.addEventListener("scroll", scheduleRichToolbarUpdate, true);
@@ -17353,7 +17569,11 @@
       richFontFamily.addEventListener("change", () => {
         if (richFontFamily.value) applyRichCommand("fontName", richFontFamily.value);
       });
-      richFontSize.addEventListener("change", () => applyRichFontSize(richFontSize.value));
+      richFontSize.addEventListener("change", () => {
+        const size = richFontSize.value;
+        richToolbarPointerActive = false;
+        if (size) applyRichFontSize(size);
+      });
       richTextColorBtn.addEventListener("click", () => {
         applyRichCommand("foreColor", richTextColorPicker.value);
       });

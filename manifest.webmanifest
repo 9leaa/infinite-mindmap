@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.4.2",
+  "name": "无限画布思维导图 V18.4.3",
   "short_name": "无限画布",
-  "description": "修复已删除附件仍进入备份的问题；备份只包含仍被画布对象引用的附件，并清理孤立元数据、PDF批注和二进制文件。",
-  "start_url": "./?v=18.4.2",
+  "description": "修复大段富文本调整字号偶发无响应，并让新建文本框的局部字号工具条正确显示该文本框自身的默认字号。",
+  "start_url": "./?v=18.4.3",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",
