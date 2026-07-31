@@ -1,4 +1,4 @@
-const CACHE_NAME = "mindmap-v18-5-0-static-1";
+const CACHE_NAME = "mindmap-v18-6-0-static-1";
 const CORE = [
   "./",
   "./index.html",

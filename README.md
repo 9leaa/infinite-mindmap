@@ -6,11 +6,11 @@
 
 把 **思维导图、自由书写、富文本、PDF 阅读与压感批注** 放在同一张无限画布中。
 
-[在线体验](https://9leaa.github.io/infinite-mindmap/?v=18.5.0) ·
+[在线体验](https://9leaa.github.io/infinite-mindmap/?v=18.6.0) ·
 [问题反馈](https://github.com/9leaa/infinite-mindmap/issues) ·
 [测试报告](./TEST_REPORT.md)
 
-![Version](https://img.shields.io/badge/version-V18.5.0-2563eb)
+![Version](https://img.shields.io/badge/version-V18.6.0-2563eb)
 ![Platform](https://img.shields.io/badge/platform-Web%20%7C%20iPad%20%7C%20macOS-111827)
 ![Data](https://img.shields.io/badge/data-local--first-16a34a)
 ![Canvas](https://img.shields.io/badge/canvas-custom_engine-7c3aed)
@@ -198,7 +198,7 @@ tiltX / tiltY / altitudeAngle / azimuthAngle
 
 直接打开：
 
-**https://9leaa.github.io/infinite-mindmap/?v=18.5.0**
+**https://9leaa.github.io/infinite-mindmap/?v=18.6.0**
 
 首次访问后，静态资源会由 Service Worker 缓存，可以作为 PWA 使用。
 
@@ -481,7 +481,7 @@ window.__mindmapDiagnostics
 
 ## 版本说明
 
-当前版本：**V18.5.0**
+当前版本：**V18.6.0**
 
 本版本主要改进：
 

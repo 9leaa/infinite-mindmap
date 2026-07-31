@@ -1,8 +1,8 @@
 {
-  "name": "无限画布思维导图 V18.5.0",
+  "name": "无限画布思维导图 V18.6.0",
   "short_name": "无限画布",
   "description": "支持多层笔记库、任意方向的节点连线、可调节点大小，并扩展文本、表格和 Office 文件导入。",
-  "start_url": "./?v=18.5.0",
+  "start_url": "./?v=18.6.0",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f7f8fb",

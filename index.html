@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>无限画布思维导图 · V18.5.0 多层笔记与画布增强版</title>
+  <title>无限画布思维导图 · V18.6.0 Office 阅读与画布稳定版</title>
   <style>
     :root {
       --toolbar-h: 58px;
@@ -3535,6 +3535,27 @@
       pointer-events: auto;
     }
 
+    .attachment-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .attachment-open {
+      justify-self: start;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border));
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--primary) 10%, var(--control-bg, white));
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
     @media (max-width: 760px) {
       .mindmap-floating-toolbar {
         max-width: calc(100vw - 12px);
@@ -3870,6 +3891,78 @@
       border-radius: 4px;
       background: white;
       box-shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
+    }
+
+    .office-reader-page {
+      width: min(820px, 100%);
+      min-height: 360px;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .office-page-content {
+      min-height: 360px;
+      padding: 42px 48px 56px;
+      overflow: hidden;
+      color: #111827;
+      background: #ffffff;
+      font-family: "Aptos", "Calibri", "Segoe UI", "PingFang SC", sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      user-select: text;
+    }
+
+    .office-page-content h1,
+    .office-page-content h2,
+    .office-page-content h3 {
+      margin: 0 0 18px;
+      line-height: 1.25;
+    }
+
+    .office-page-content p {
+      margin: 0 0 10px;
+      white-space: pre-wrap;
+    }
+
+    .office-page-content ul {
+      margin: 0 0 12px 24px;
+      padding: 0;
+    }
+
+    .office-page-content table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 13px;
+    }
+
+    .office-page-content th,
+    .office-page-content td {
+      min-width: 48px;
+      padding: 7px 8px;
+      border: 1px solid #cbd5e1;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    .office-page-content th {
+      background: #eff6ff;
+      font-weight: 700;
+    }
+
+    .office-page-unsupported {
+      min-height: 320px;
+      display: grid;
+      place-items: center;
+      padding: 34px;
+      color: #475569;
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    body[data-theme="dark"] .office-page-content {
+      color: #e5e7eb;
+      background: #ffffff;
     }
 
     .pdf-reader-page-number {
@@ -5090,6 +5183,7 @@
         <div id="documentTools" class="library-tools library-collapsible">
           <button id="newDocumentBtn" type="button">＋ 新建顶层笔记</button>
           <button id="newChildDocumentBtn" type="button">↳ 新建子笔记</button>
+          <button id="moveDocumentBtn" type="button">⇄ 调整笔记层级</button>
           <button id="duplicateDocumentBtn" type="button">复制</button>
           <button id="renameDocumentBtn" type="button">重命名</button>
           <button id="deleteDocumentBtn" class="danger" type="button">删除</button>
@@ -5710,6 +5804,7 @@
       const closeSidebarBtn = document.getElementById("closeSidebarBtn");
       const newDocumentBtn = document.getElementById("newDocumentBtn");
       const newChildDocumentBtn = document.getElementById("newChildDocumentBtn");
+      const moveDocumentBtn = document.getElementById("moveDocumentBtn");
       const duplicateDocumentBtn = document.getElementById("duplicateDocumentBtn");
       const renameDocumentBtn = document.getElementById("renameDocumentBtn");
       const deleteDocumentBtn = document.getElementById("deleteDocumentBtn");
@@ -5958,6 +6053,9 @@
       let toolbarRecoveryTimer = null;
       let viewportRecoveryFrame = null;
       let viewportRecoveryTimer = null;
+      let workspaceResizeObserver = null;
+      let lastWorkspaceGeometry = null;
+      let workspaceGeometryPending = false;
       let lastViewportSize = {
         width: window.visualViewport?.width || window.innerWidth,
         height: window.visualViewport?.height || window.innerHeight
@@ -8236,6 +8334,67 @@
         topDocTitle.select();
       }
 
+      function documentDescendantIds(rootId) {
+        const descendants = new Set();
+        const pending = [rootId];
+        while (pending.length) {
+          const parentId = pending.pop();
+          for (const candidate of Object.values(library?.documents || {})) {
+            if (candidate.parentId !== parentId || descendants.has(candidate.id)) {
+              continue;
+            }
+            descendants.add(candidate.id);
+            pending.push(candidate.id);
+          }
+        }
+        return descendants;
+      }
+
+      function moveCurrentDocument() {
+        const current = currentDocument();
+        if (!current || !library) return;
+
+        const descendants = documentDescendantIds(current.id);
+        const candidates = Object.values(library.documents)
+          .filter(doc => doc.id !== current.id && !descendants.has(doc.id))
+          .sort((a, b) => String(a.title).localeCompare(String(b.title), "zh-CN"));
+        const lines = [
+          "0. 设为顶层笔记",
+          ...candidates.map((doc, index) => `${index + 1}. ${doc.title || "未命名笔记"}`)
+        ];
+        const answer = prompt(
+          `将“${current.title || "未命名笔记"}”归入哪个父笔记？\n\n${lines.join("\n")}\n\n输入编号：`,
+          current.parentId
+            ? String(Math.max(1, candidates.findIndex(doc => doc.id === current.parentId) + 1))
+            : "0"
+        );
+        if (answer === null) return;
+
+        const choice = Number.parseInt(answer.trim(), 10);
+        if (!Number.isInteger(choice) || choice < 0 || choice > candidates.length) {
+          alert("请输入列表中的有效编号");
+          return;
+        }
+
+        const parent = choice === 0 ? null : candidates[choice - 1];
+        if (parent?.id === current.id || descendants.has(parent?.id)) {
+          alert("不能将笔记归入自己或自己的子笔记");
+          return;
+        }
+
+        current.parentId = parent?.id || null;
+        current.updatedAt = nowIso();
+        if (parent) {
+          parent.childrenCollapsed = false;
+          parent.updatedAt = nowIso();
+        }
+        persistLibrary();
+        renderDocumentList();
+        statusEl.textContent = parent
+          ? `已将笔记归入“${parent.title || "未命名笔记"}”`
+          : "已将笔记设为顶层笔记";
+      }
+
       function renameCurrentDocument() {
         const doc = currentDocument();
         if (!doc) return;
@@ -8278,7 +8437,7 @@
         for (const [assetId, asset] of Object.entries(
           copy.state.assets || {}
         )) {
-          if (asset?.type !== "pdf") continue;
+          if (!['pdf', 'office'].includes(asset?.type)) continue;
           const annotations = await loadPdfAnnotations(
             source.id,
             assetId
@@ -8316,7 +8475,7 @@
         for (const [assetId, asset] of Object.entries(
           doc.state?.assets || {}
         )) {
-          if (asset?.type === "pdf") {
+          if (["pdf", "office"].includes(asset?.type)) {
             await replacePdfAnnotations(doc.id, assetId, {});
           }
         }
@@ -8369,6 +8528,7 @@
         library.settings.sidebarOpen = Boolean(visible);
         mainShell.classList.toggle("sidebar-hidden", !visible);
         persistLibrary();
+        applyTransform();
         requestAnimationFrame(() => {
           applyTransform();
           renderEdges();
@@ -8816,7 +8976,7 @@
               ? "infinite-mindmap-library-backup"
               : "infinite-mindmap-document-backup",
           formatVersion: 1,
-          appVersion: "18.5.0",
+            appVersion: "18.6.0",
           exportedAt: nowIso(),
           libraryPath: "library.json",
           documents: [],
@@ -11712,6 +11872,310 @@
         }
       }
 
+      let activeReaderKind = "pdf";
+      let activeOfficePages = [];
+      let officeReaderPromise = null;
+
+      function officeXmlText(node) {
+        return [...(node?.getElementsByTagNameNS?.("*", "t") || [])]
+          .map(item => item.textContent || "")
+          .join("");
+      }
+
+      function escapeOfficeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function officeZipPathForEntry(entries, matcher) {
+        return entries
+          .map(entry => entry.filename)
+          .find(name => matcher.test(name)) || null;
+      }
+
+      async function readOfficeZip(fileBlob) {
+        const zip = await ensureZipModule();
+        const reader = new zip.ZipReader(new zip.BlobReader(fileBlob));
+        const entries = await reader.getEntries({ useWebWorkers: false });
+        const entryMap = new Map(
+          entries.filter(entry => !entry.directory)
+            .map(entry => [entry.filename, entry])
+        );
+
+        return {
+          entries,
+          async text(path) {
+            const entry = entryMap.get(path);
+            if (!entry) return "";
+            return entry.getData(new zip.TextWriter(), {
+              useWebWorkers: false
+            });
+          },
+          close() {
+            return reader.close();
+          }
+        };
+      }
+
+      function officeXmlDocument(value) {
+        const xml = new DOMParser().parseFromString(value, "application/xml");
+        if (xml.querySelector("parsererror")) {
+          throw new Error("Office 文档结构无法解析");
+        }
+        return xml;
+      }
+
+      function renderDocxXml(xml) {
+        const document = officeXmlDocument(xml);
+        const paragraphs = [...document.getElementsByTagNameNS("*", "p")];
+        const html = paragraphs.map(paragraph => {
+          const text = officeXmlText(paragraph);
+          if (!text) return "<p><br /></p>";
+          const style = paragraph.getElementsByTagNameNS("*", "pStyle")[0]
+            ?.getAttribute("w:val") || "";
+          const heading = Number(style.match(/heading(\d)/i)?.[1] || 0);
+          const content = escapeOfficeHtml(text);
+          return heading
+            ? `<h${Math.min(6, heading)}>${content}</h${Math.min(6, heading)}>`
+            : `<p>${content}</p>`;
+        }).join("");
+        return html || "<p>这个 DOCX 文件没有可显示的正文。</p>";
+      }
+
+      function renderOdtXml(xml) {
+        const document = officeXmlDocument(xml);
+        const paragraphs = [
+          ...document.getElementsByTagNameNS("*", "h"),
+          ...document.getElementsByTagNameNS("*", "p")
+        ];
+        const html = paragraphs.map(paragraph => {
+          const text = paragraph.textContent || "";
+          if (!text.trim()) return "<p><br /></p>";
+          const level = Number(paragraph.getAttribute("text:outline-level") || 0);
+          const content = escapeOfficeHtml(text);
+          return level
+            ? `<h${Math.min(6, level)}>${content}</h${Math.min(6, level)}>`
+            : `<p>${content}</p>`;
+        }).join("");
+        return html || "<p>这个 ODT 文件没有可显示的正文。</p>";
+      }
+
+      function renderPptxSlideXml(xml, index) {
+        const document = officeXmlDocument(xml);
+        const texts = [...document.getElementsByTagNameNS("*", "t")]
+          .map(node => node.textContent || "")
+          .filter(Boolean);
+        if (!texts.length) {
+          return `<h2>第 ${index} 页</h2><p>这一页没有可提取的文字内容。</p>`;
+        }
+        return `<h2>第 ${index} 页</h2>${texts
+          .map(text => `<p>${escapeOfficeHtml(text)}</p>`).join("")}`;
+      }
+
+      function spreadsheetColumnIndex(reference) {
+        const letters = String(reference || "").match(/[A-Z]+/i)?.[0] || "A";
+        let result = 0;
+        for (const letter of letters.toUpperCase()) {
+          result = result * 26 + letter.charCodeAt(0) - 64;
+        }
+        return Math.max(0, result - 1);
+      }
+
+      function renderXlsxXml(sheetXml, sharedStringsXml = "") {
+        const sheet = officeXmlDocument(sheetXml);
+        const shared = sharedStringsXml
+          ? officeXmlDocument(sharedStringsXml)
+          : null;
+        const strings = shared
+          ? [...shared.getElementsByTagNameNS("*", "si")]
+              .map(node => officeXmlText(node))
+          : [];
+        const rows = [...sheet.getElementsByTagNameNS("*", "row")];
+        const tableRows = rows.map(row => {
+          const cells = [...row.getElementsByTagNameNS("*", "c")];
+          const values = [];
+          for (const cell of cells) {
+            const index = spreadsheetColumnIndex(cell.getAttribute("r"));
+            while (values.length <= index) values.push("");
+            const type = cell.getAttribute("t") || "";
+            const valueNode = cell.getElementsByTagNameNS("*", "v")[0];
+            const inlineNode = cell.getElementsByTagNameNS("*", "is")[0];
+            let value = inlineNode
+              ? officeXmlText(inlineNode)
+              : (valueNode?.textContent || "");
+            if (type === "s") value = strings[Number(value)] || value;
+            values[index] = value;
+          }
+          return `<tr>${values.map(value => `<td>${escapeOfficeHtml(value)}</td>`).join("")}</tr>`;
+        }).join("");
+        return `<table><tbody>${tableRows || "<tr><td>这个表格没有可显示的数据。</td></tr>"}</tbody></table>`;
+      }
+
+      function renderOdsXml(xml) {
+        const document = officeXmlDocument(xml);
+        const rows = [...document.getElementsByTagNameNS("*", "table-row")];
+        const tableRows = rows.map(row => {
+          const cells = [...row.getElementsByTagNameNS("*", "table-cell")];
+          return `<tr>${cells.map(cell => {
+            const repeat = Math.max(1, Number(cell.getAttribute("table:number-columns-repeated") || 1));
+            const text = escapeOfficeHtml(cell.textContent || "");
+            return Array.from({length: Math.min(repeat, 40)}, () => `<td>${text}</td>`).join("");
+          }).join("")}</tr>`;
+        }).join("");
+        return `<table><tbody>${tableRows || "<tr><td>这个表格没有可显示的数据。</td></tr>"}</tbody></table>`;
+      }
+
+      async function buildOfficePreviewPages(assetId) {
+        const asset = state.assets?.[assetId];
+        if (!asset) throw new Error("Office 文件数据不存在");
+        const extension = assetExtension(asset);
+        const blob = await ensureBinaryAsset(assetId, asset);
+        const office = await readOfficeZip(blob);
+
+        try {
+          if (extension === ".docx") {
+            return [renderDocxXml(await office.text("word/document.xml"))];
+          }
+          if (extension === ".odt") {
+            return [renderOdtXml(await office.text("content.xml"))];
+          }
+          if (extension === ".xlsx") {
+            const sheetPath = officeZipPathForEntry(
+              office.entries,
+              /^xl\/worksheets\/sheet\d+\.xml$/
+            );
+            if (!sheetPath) throw new Error("XLSX 中没有工作表");
+            return [renderXlsxXml(
+              await office.text(sheetPath),
+              await office.text("xl/sharedStrings.xml")
+            )];
+          }
+          if (extension === ".ods") {
+            return [renderOdsXml(await office.text("content.xml"))];
+          }
+          if (extension === ".pptx") {
+            const slidePaths = office.entries
+              .map(entry => entry.filename)
+              .filter(path => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+              .sort((a, b) => Number(a.match(/slide(\d+)/)?.[1]) - Number(b.match(/slide(\d+)/)?.[1]));
+            if (!slidePaths.length) throw new Error("PPTX 中没有幻灯片");
+            return Promise.all(slidePaths.map(async (path, index) =>
+              renderPptxSlideXml(await office.text(path), index + 1)
+            ));
+          }
+          if (extension === ".odp") {
+            const document = officeXmlDocument(await office.text("content.xml"));
+            const pages = [...document.getElementsByTagNameNS("*", "page")];
+            return pages.map((page, index) => {
+              const text = escapeOfficeHtml(page.textContent || "");
+              return `<h2>第 ${index + 1} 页</h2><p>${text || "这一页没有可提取的文字内容。"}</p>`;
+            });
+          }
+          throw new Error(`暂不支持在应用内预览 ${extension || "该格式"}`);
+        } finally {
+          await office.close();
+        }
+      }
+
+      function officePageElement(pageNumber, html) {
+        const page = document.createElement("section");
+        page.className = "pdf-reader-page office-reader-page";
+        page.dataset.pageNumber = String(pageNumber);
+        page.innerHTML = `
+          <span class="pdf-reader-page-number">第 ${pageNumber} 页</span>
+          <div class="office-page-content">${html}</div>
+        `;
+        return page;
+      }
+
+      function renderOfficeReaderPages() {
+        pdfReaderBody.innerHTML = "";
+        const fragment = document.createDocumentFragment();
+        for (let index = 0; index < activeOfficePages.length; index += 1) {
+          fragment.appendChild(officePageElement(index + 1, activeOfficePages[index]));
+        }
+        pdfReaderBody.appendChild(fragment);
+
+        const zoom = Math.max(0.55, Math.min(2.2, pdfReaderZoom));
+        for (const page of pdfReaderBody.querySelectorAll(".office-reader-page")) {
+          const content = page.querySelector(".office-page-content");
+          content.style.fontSize = `${15 * zoom}px`;
+          content.style.padding = `${42 * zoom}px ${48 * zoom}px ${56 * zoom}px`;
+          page.style.width = `min(${Math.round(820 * zoom)}px, 100%)`;
+          const width = Math.max(1, page.clientWidth);
+          const height = Math.max(1, content.scrollHeight);
+          const annotationCanvas = document.createElement("canvas");
+          annotationCanvas.className = "pdf-reader-annotation-canvas";
+          const liveCanvas = document.createElement("canvas");
+          liveCanvas.className = "pdf-reader-annotation-live-canvas";
+          resizePdfAnnotationCanvas(annotationCanvas, width, height);
+          resizePdfAnnotationCanvas(liveCanvas, width, height);
+          page.append(annotationCanvas, liveCanvas);
+          bindPdfAnnotationCanvas(liveCanvas, Number(page.dataset.pageNumber));
+          redrawPdfAnnotationCanvas(Number(page.dataset.pageNumber));
+        }
+        pdfReaderBody.scrollTop = 0;
+        setPdfReaderCurrentPage(1);
+        updatePdfReaderZoomLabel();
+      }
+
+      async function openOfficeReader(assetId) {
+        const asset = state.assets?.[assetId];
+        if (!asset) return;
+        if (activePdfAssetId && activePdfAssetId !== assetId) closePdfReader();
+
+        activeReaderKind = "office";
+        activePdfAssetId = assetId;
+        activePdfDocument = {
+          numPages: 1,
+          cleanup() {},
+          destroy() {}
+        };
+        const settings = ensurePdfReaderSettings();
+        pdfReaderZoom = settings.zoom;
+        pdfReaderTitle.textContent = asset.name || "Office 阅读";
+        pdfReaderPageStatus.textContent = "正在打开…";
+        pdfReaderSystemOpenBtn.disabled = false;
+        mainShell.classList.add("pdf-reader-open");
+        mainShell.style.setProperty("--pdf-reader-width", `${settings.width}vw`);
+        document.body.classList.toggle("pdf-reader-wide", settings.width >= 82);
+        pdfReaderPanel.setAttribute("aria-hidden", "false");
+        setPdfReaderMaximized(false);
+        setPdfReaderMode("reader");
+        showPdfReaderLoading("正在读取 Office 文档…");
+
+        const sessionId = ++pdfReaderSessionId;
+        officeReaderPromise = buildOfficePreviewPages(assetId)
+          .then(pages => {
+            if (sessionId !== pdfReaderSessionId || activePdfAssetId !== assetId) {
+              throw createPdfReaderAbortError();
+            }
+            activeOfficePages = pages;
+            activePdfDocument.numPages = pages.length;
+            asset.pageCount = pages.length;
+            renderOfficeReaderPages();
+            pdfReaderTotalPages.textContent = String(pages.length);
+            pdfReaderPageSlider.max = String(pages.length);
+            pdfReaderPageStatus.textContent = `1 / ${pages.length} 页 · Office 预览`;
+            setSaveIndicator("saved", "Office 阅读器已就绪");
+            persistLibrary();
+            return pages;
+          })
+          .catch(error => {
+            if (error?.name === "AbortError") return null;
+            console.error("Office 阅读器启动失败", error);
+            pdfReaderPageStatus.textContent = "Office 打开失败";
+            showPdfReaderError(error);
+            setSaveIndicator("error", "Office 阅读器启动失败");
+            return null;
+          });
+        await officeReaderPromise;
+      }
+
       function worldViewportBounds(margin = 700) {
         const width = workspace.clientWidth || 1;
         const height = workspace.clientHeight || 1;
@@ -11797,13 +12261,13 @@
         pdfReaderBody.innerHTML = `
           <div class="pdf-reader-error-screen">
             <div class="pdf-reader-error-card">
-              <strong>PDF 阅读器启动失败</strong>
+              <strong>${activeReaderKind === "office" ? "Office 阅读器启动失败" : "PDF 阅读器启动失败"}</strong>
               <span>${message}</span>
               <button id="pdfReaderRetryBtn" type="button">
                 重新加载
               </button>
               <button id="pdfReaderErrorSystemOpenBtn" type="button">
-                使用系统 PDF 阅读器
+                ${activeReaderKind === "office" ? "使用系统 Office 打开" : "使用系统 PDF 阅读器"}
               </button>
             </div>
           </div>
@@ -11819,7 +12283,13 @@
 
         document
           .getElementById("pdfReaderErrorSystemOpenBtn")
-          ?.addEventListener("click", openPdfInSystemViewer);
+          ?.addEventListener("click", () => {
+            if (activeReaderKind === "office" && activePdfAssetId) {
+              openAttachmentInSystem(activePdfAssetId);
+            } else {
+              openPdfInSystemViewer();
+            }
+          });
       }
 
       function setPdfReaderMode(mode) {
@@ -12024,6 +12494,11 @@
         pdfReaderZoom = Math.max(0.55, Math.min(2.2, nextZoom));
         ensurePdfReaderSettings().zoom = pdfReaderZoom;
         updatePdfReaderZoomLabel({ announce });
+        if (activeReaderKind === "office" && activeOfficePages.length) {
+          renderOfficeReaderPages();
+          persistLibrary();
+          return;
+        }
         refreshPdfReaderPages();
         persistLibrary();
       }
@@ -12065,6 +12540,8 @@
         );
         pdfReaderLoadPromise = null;
         pdfAnnotationModePromise = null;
+        officeReaderPromise = null;
+        activeOfficePages = [];
         setPdfReaderMaximized(false);
         document.body.classList.remove("pdf-reader-wide");
         pdfRenderQueue = [];
@@ -12108,6 +12585,7 @@
           activePdfAssetId = null;
           activePdfDocument = null;
         }
+        activeReaderKind = "pdf";
 
         requestAnimationFrame(() => {
           applyTransform();
@@ -13308,6 +13786,10 @@
       }
 
       function refreshPdfReaderPages() {
+        if (activeReaderKind === "office") {
+          if (activeOfficePages.length) renderOfficeReaderPages();
+          return;
+        }
         pdfRenderQueue = [];
         pdfRenderQueued.clear();
         for (const renderTask of pdfReaderPageRenders.values()) {
@@ -13459,10 +13941,20 @@
         { forceReload = false } = {}
       ) {
         const asset = state.assets?.[assetId];
-        if (!asset || asset.type !== "pdf") {
-          alert("PDF 文件数据不存在");
+        if (!asset) {
+          alert("文件数据不存在");
           return;
         }
+        if (isOfficePreviewAsset(asset)) {
+          await openOfficeReader(assetId);
+          return;
+        }
+        if (asset.type !== "pdf") {
+          await openAttachmentInSystem(assetId);
+          return;
+        }
+
+        activeReaderKind = "pdf";
 
         if (
           activePdfAssetId &&
@@ -13544,7 +14036,9 @@
           setSaveIndicator("saving", "正在读取 PDF 批注");
 
           try {
-            await preparePdfReaderDocument(activePdfAssetId);
+            if (activeReaderKind !== "office") {
+              await preparePdfReaderDocument(activePdfAssetId);
+            }
             await hydratePdfAnnotations(activePdfAssetId);
 
             setPdfReaderMode("annotation");
@@ -13561,7 +14055,7 @@
 
             pdfReaderPageStatus.textContent =
               `${pdfReaderCurrentPageNumber} / ` +
-              `${activePdfDocument.numPages} 页 · 批注模式`;
+              `${activePdfDocument.numPages} 页 · ${activeReaderKind === "office" ? "Office " : ""}批注模式`;
             setSaveIndicator("saved", "批注模式已就绪");
             return true;
           } catch (error) {
@@ -13585,12 +14079,14 @@
         if (!activePdfAssetId) return;
 
         try {
-          await preparePdfReaderDocument(activePdfAssetId);
+          if (activeReaderKind !== "office") {
+            await preparePdfReaderDocument(activePdfAssetId);
+          }
           setPdfReaderMode("reader");
           setPdfReaderTool("pan");
           pdfReaderPageStatus.textContent =
             `${pdfReaderCurrentPageNumber} / ` +
-            `${activePdfDocument.numPages} 页 · 连续阅读`;
+            `${activePdfDocument.numPages} 页 · ${activeReaderKind === "office" ? "Office " : ""}连续阅读`;
         } catch (error) {
           showPdfReaderError(error);
         }
@@ -13684,6 +14180,27 @@
           setTimeout(() => URL.revokeObjectURL(url), 1500);
         } catch (error) {
           alert(`附件下载失败：${error.message}`);
+        }
+      }
+
+      async function openAttachmentInSystem(assetId) {
+        const asset = state.assets?.[assetId];
+        if (!asset) return;
+
+        try {
+          const blob = await ensureBinaryAsset(assetId, asset);
+          const url = URL.createObjectURL(blob);
+          const opened = window.open(url, "_blank", "noopener");
+          if (!opened) {
+            const link = document.createElement("a");
+            link.href = url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.click();
+          }
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+          alert(`文件打开失败：${error.message}`);
         }
       }
 
@@ -13852,10 +14369,12 @@
               <div class="attachment-name">附件</div>
               <div class="attachment-meta"></div>
               <div class="attachment-note">
-                PDF 可以直接阅读和批注；其他二进制格式会保留原文件，
-                可随时下载后用本机 Office / WPS 转为 PDF 再导入。
+                常用 Office 文件可直接预览和批注；不支持预览的格式会保留原文件。
               </div>
-              <button class="attachment-download" type="button">下载原文件</button>
+              <div class="attachment-actions">
+                <button class="attachment-open" type="button">打开预览</button>
+                <button class="attachment-download" type="button">下载原文件</button>
+              </div>
             </div>
             <div class="free-resize-handle"></div>
           `;
@@ -13870,7 +14389,7 @@
         el.addEventListener("pointerdown", event => {
           if (event.button !== 0) return;
           if (event.target.closest(".free-resize-handle")) return;
-          if (event.target.closest(".attachment-download, .pdf-file-actions")) return;
+          if (event.target.closest(".attachment-actions, .pdf-file-actions")) return;
           if (event.target.closest(".inline-editor, .editing-host")) return;
           event.stopPropagation();
 
@@ -13960,7 +14479,22 @@
         }
 
         if (item.type === "attachment") {
+          const asset = state.assets?.[item.assetId];
+          const openButton = el.querySelector(".attachment-open");
           const downloadButton = el.querySelector(".attachment-download");
+          const canPreview = isOfficePreviewAsset(asset);
+          if (openButton) {
+            openButton.textContent = canPreview ? "打开预览" : "系统打开";
+            openButton.title = canPreview
+              ? "在应用内打开并批注"
+              : "使用系统或浏览器打开原文件";
+            openButton.addEventListener("click", event => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (canPreview) openOfficeReader(item.assetId);
+              else openAttachmentInSystem(item.assetId);
+            });
+          }
           downloadButton?.addEventListener("click", event => {
             event.preventDefault();
             event.stopPropagation();
@@ -16761,6 +17295,7 @@
         ) {
           releaseCanvasToolPointer(event);
         }
+        schedulePendingWorkspaceGeometryRecovery();
       }, true);
 
       window.addEventListener("pointercancel", event => {
@@ -16772,6 +17307,7 @@
         ) {
           releaseCanvasToolPointer(event);
         }
+        schedulePendingWorkspaceGeometryRecovery();
         document.body.classList.remove("inking-active");
       }, true);
 
@@ -17574,6 +18110,27 @@
         );
       }
 
+      const OFFICE_PREVIEW_EXTENSIONS = new Set([
+        ".docx", ".pptx", ".xlsx", ".odt", ".ods", ".odp"
+      ]);
+
+      function assetExtension(asset) {
+        const value = String(
+          asset?.extension ||
+          asset?.name?.match(/(\.[a-zA-Z0-9]{1,12})$/)?.[1] ||
+          ""
+        ).toLowerCase();
+        return value.startsWith(".") ? value : `.${value}`;
+      }
+
+      function isOfficePreviewAsset(asset) {
+        return OFFICE_PREVIEW_EXTENSIONS.has(assetExtension(asset));
+      }
+
+      function isOfficeAsset(asset) {
+        return asset?.type === "office" || isOfficePreviewAsset(asset);
+      }
+
       async function importTextDocument(file) {
         if (file.size > 8 * 1024 * 1024) {
           const proceed = window.confirm(
@@ -17609,7 +18166,7 @@
         state.assets = state.assets || {};
         state.assets[assetId] = {
           id: assetId,
-          type: "attachment",
+          type: isOfficeAsset({ extension }) ? "office" : "attachment",
           name: file.name,
           mime: file.type || "application/octet-stream",
           extension,
@@ -18459,7 +19016,11 @@
       pdfReaderSystemOpenBtn.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
-        openPdfInSystemViewer();
+        if (activeReaderKind === "office") {
+          if (activePdfAssetId) openAttachmentInSystem(activePdfAssetId);
+        } else {
+          openPdfInSystemViewer();
+        }
       });
 
       pdfReaderResizeHandle.addEventListener("pointerdown", event => {
@@ -19035,6 +19596,7 @@
 
       newDocumentBtn.addEventListener("click", createNewDocument);
       newChildDocumentBtn.addEventListener("click", createChildDocument);
+      moveDocumentBtn.addEventListener("click", moveCurrentDocument);
       duplicateDocumentBtn.addEventListener("click", duplicateCurrentDocument);
       renameDocumentBtn.addEventListener("click", renameCurrentDocument);
       deleteDocumentBtn.addEventListener("click", deleteCurrentDocument);
@@ -19319,10 +19881,36 @@
         const height = window.visualViewport?.height || window.innerHeight;
         const widthChanged = Math.abs(width - lastViewportSize.width) > 2;
         const heightChanged = Math.abs(height - lastViewportSize.height) > 2;
+        const rect = workspace.getBoundingClientRect();
+        const nextGeometry = {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height
+        };
+        const previousGeometry = lastWorkspaceGeometry;
+        const geometryChanged = !previousGeometry ||
+          Math.abs(nextGeometry.left - previousGeometry.left) > 0.5 ||
+          Math.abs(nextGeometry.top - previousGeometry.top) > 0.5 ||
+          Math.abs(nextGeometry.width - previousGeometry.width) > 0.5 ||
+          Math.abs(nextGeometry.height - previousGeometry.height) > 0.5;
 
         lastViewportSize = { width, height };
 
-        if (!widthChanged && !heightChanged) return;
+        if (!widthChanged && !heightChanged && !geometryChanged) return;
+
+        if (geometryChanged && (currentStroke || laserStroke || eraserPointerId !== null)) {
+          // 书写中不重置 canvas，避免清掉正在绘制的实时笔迹；抬笔后再次调度。
+          workspaceGeometryPending = true;
+          return;
+        }
+        lastWorkspaceGeometry = nextGeometry;
+        workspaceGeometryPending = false;
+
+        if (geometryChanged) {
+          resizeInkCanvas(drawCanvas, drawContext);
+          resizeInkCanvas(laserCanvas, laserContext);
+        }
 
         // 不在正在落笔时强制取消指针，避免笔迹被截断。
         if (!currentStroke && !laserStroke && eraserPointerId === null) {
@@ -19353,11 +19941,24 @@
         }, 120);
       }
 
+      function schedulePendingWorkspaceGeometryRecovery() {
+        if (!workspaceGeometryPending) return;
+        if (currentStroke || laserStroke || eraserPointerId !== null) return;
+        scheduleViewportRecovery();
+      }
+
       window.addEventListener("resize", scheduleViewportRecovery);
       window.visualViewport?.addEventListener(
         "resize",
         scheduleViewportRecovery
       );
+
+      if (typeof ResizeObserver === "function") {
+        workspaceResizeObserver = new ResizeObserver(() => {
+          scheduleViewportRecovery();
+        });
+        workspaceResizeObserver.observe(workspace);
+      }
 
       document.addEventListener("pointermove", event => {
         if (!pureModeEnabled) return;
